@@ -522,7 +522,7 @@ class ArrowComponent extends PositionComponent with TapCallbacks, HasPaint {
 
     // ── 5. Resolve color and stroke width ─────────────────────────────────────────────
     final mainColor = _color();
-    final sw = cellSize * 0.2; // Slightly sleek & clean arrow body thickness
+    final sw = cellSize * 0.30; // Clear, Kotlin-style arrow body thickness
 
     canvas.save();
 
@@ -618,8 +618,8 @@ class ArrowComponent extends PositionComponent with TapCallbacks, HasPaint {
     // The head tip position
     final tip = pts.first + Offset(dx * cellSize * 0.46, dy * cellSize * 0.46);
 
-    final hd = cellSize * 0.44; // depth
-    final hw = cellSize * 0.34; // half-width
+    final hd = cellSize * 0.50; // depth
+    final hw = cellSize * 0.42; // half-width
 
     final base = tip - Offset(dx * hd, dy * hd);
     final px = -dy, py = dx; // perpendicular

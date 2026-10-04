@@ -70,11 +70,6 @@ class LevelGeneratorV2 {
   static final ListQueue<String> _godShapeHistory  = ListQueue<String>();
   static const int _shapeHistoryMaxLen = 5;
 
-  // ── ColorLock master switch ───────────────────────────────────────────────
-  /// ColorLock (paired-color) arrow generation is DISABLED.
-  /// Set to true to re-enable; the mechanic implementation is unchanged.
-  static const bool _colorLockEnabled = true;
-
   // ── Entry point ─────────────────────────────────────────────────────────────
 
   /// Generate a level. Seeded by levelNumber for determinism.
@@ -107,51 +102,20 @@ class LevelGeneratorV2 {
     LevelModel? level;
 
     final bool isLargeGrid = gridSize > 20;
-
-    // ── Constraint ladder (levels NEVER skip) ────────────────────────────────
-    // Instead of giving up after a handful of attempts, we relax the
-    // constraints progressively and only fall back to a trivially-solvable
-    // layout at Tier 7. The silhouette (dragon/heart/…) is preserved until
-    // Tier 7 — difficulty is always sacrificed before visual identity.
-    //
-    //   Tier 1 — attempts  1-3 : full target (pairs, dots, fill 0.80, shape)
-    //   Tier 2 — attempts  4-6 : target − 1 pair, same dots/fill/shape
-    //   Tier 3 — attempts  7-9 : 0 pairs, 0 dots, fill 0.75, shape
-    //   Tier 4 — attempts 10-12: 0 pairs, 0 dots, fill 0.70, shape
-    //   Tier 5 — attempts 13-15: 0 pairs, 0 dots, fill 0.65, shape
-    //   Tier 6 — attempts 16-18: board shrunk by 2, 0 pairs, 0 dots, fill 0.65
-    //   Tier 7 — attempts 19-20: guaranteed rectangle fallback (always works)
-    const int maxAttempts = 20;
+    final int maxAttempts  = isLargeGrid
+        ? (type == LevelType.normal ? 80 : 120)
+        : 80;
 
     for (int attempt = 0; attempt < maxAttempts && level == null; attempt++) {
-      final int tier = _tierForAttempt(attempt);
-
-      if (tier == 7) {
-        // GUARANTEED FALLBACK — a trivial rectangle layout that always solves.
-        print('[Level $levelNumber] using fallback rectangle');
-        level = _guaranteedFallback(levelNumber, gridSize, type);
-        break;
-      }
-
-      // Tier 6 shrinks the canvas by 2 while keeping the assigned silhouette.
-      int attemptGridSize = gridSize;
-      Set<String> attemptMask = mask;
-      if (tier == 6) {
-        attemptGridSize = max(6, gridSize - 2);
-        attemptMask =
-            MaskGeneratorV2.shapeByName(maskShape.name, attemptGridSize, rng);
-      }
-
       level = _attempt(
         levelNumber: levelNumber,
-        gridSize: attemptGridSize,
-        mask: attemptMask,
+        gridSize: gridSize,
+        mask: mask,
         params: params,
         type: type,
         rng: rng,
         maskShape: maskShape,
         attempt: attempt,
-        tier: tier,
       );
     }
 
@@ -318,7 +282,6 @@ class LevelGeneratorV2 {
     required Random rng,
     required MaskShape maskShape,
     required int attempt,
-    required int tier,
   }) {
     final arrows           = <ArrowModel>[];
     final occupied         = <String>{};
@@ -335,17 +298,11 @@ class LevelGeneratorV2 {
       maskPacked.add(cell[0] * 1000 + cell[1]);
     }
 
-    // ── Constraint-ladder flags for this attempt's tier ──────────────────────
-    final bool allowPairs    = tier <= 2;          // tiers 3+ carry zero pairs
-    final bool allowDots     = tier <= 2;          // tiers 3+ carry zero dots
-    final int  pairReduction = tier >= 2 ? 1 : 0;  // tier 2 drops one pair
-
     // ── Fill strategy ────────────────────────────────────────────────────────
-    // Tiers 1-2 target a full grid. Tiers 3+ (which have already dropped all
-    // pairs and dots) use a density target bounded by the tier's fill floor.
+    // Phase 1 tries to fill the entire grid for the first 12 attempts.
+    // After that it falls back to a density target that decreases on each retry.
     // V2 CHANGE: Phase 2 fill rate is capped per level to avoid 2-cell dominance.
-    final double fillFloor = _fillFloorForTier(tier);
-    bool fillEntireGrid = type != LevelType.tutorial && tier <= 2;
+    bool fillEntireGrid = type != LevelType.tutorial && attempt < 12;
     if (levelNumber == 213 || levelNumber == 395 || levelNumber == 437) {
       fillEntireGrid = false;
     }
@@ -356,7 +313,7 @@ class LevelGeneratorV2 {
       if (levelNumber == 213 || levelNumber == 395 || levelNumber == 437) {
         fillRate = 0.55;
       } else {
-        fillRate = (1.0 - (attempt - 12) * 0.02).clamp(fillFloor, 0.98);
+        fillRate = (1.0 - (attempt - 12) * 0.02).clamp(0.68, 0.95);
       }
       final targetOccupied = (mask.length * fillRate).round();
       targetCount = (targetOccupied / params.avgLen).round().clamp(4, 300);
@@ -693,23 +650,6 @@ class LevelGeneratorV2 {
           }
         }
       }
-
-      // Reject if adjacent empty cells remain (would leave unplayable orphan pairs)
-      if (attempt < 10) {
-        final remainingEmpty = maskCells
-            .where((c) => !occupiedPacked.contains(c[0] * 1000 + c[1]))
-            .toList();
-        final remPacked = remainingEmpty.map((c) => c[0] * 1000 + c[1]).toSet();
-        for (final cell in remainingEmpty) {
-          final r = cell[0], c = cell[1];
-          for (final nb in [[-1,0],[1,0],[0,-1],[0,1]]) {
-            if (remPacked.contains((r + nb[0]) * 1000 + (c + nb[1]))) {
-              _log('Level $levelNumber Attempt $attempt: adjacent empty cells remain\n');
-              return null;
-            }
-          }
-        }
-      }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -723,14 +663,10 @@ class LevelGeneratorV2 {
 
     if (arrows.isEmpty) return null;
 
-    // ── Tier fill-floor acceptance ───────────────────────────────────────────
-    // `fillFloor` is the minimum fraction of the mask that arrows must cover.
-    // Lower tiers relax it so progressively sparser boards are accepted and the
-    // level is never skipped.
-    final int requiredCoverage = (mask.length * fillFloor).floor();
-    if (type != LevelType.tutorial && occupied.length < requiredCoverage) {
-      _log('Level $levelNumber Attempt $attempt: tier $tier too sparse '
-          '(${occupied.length}/$requiredCoverage)\n');
+    // Minimum arrow density check (30% of mask)
+    final minArrowCoverage = (mask.length * 0.30).floor();
+    if (occupied.length < minArrowCoverage && type != LevelType.tutorial) {
+      _log('Level $levelNumber Attempt $attempt: too sparse\n');
       return null;
     }
 
@@ -738,15 +674,14 @@ class LevelGeneratorV2 {
     const double maxOrphansPct = 0.26;
     final maxOrphans = (mask.length * maxOrphansPct).ceil().clamp(5, 300);
 
-    // Cap the orphan count only while the ladder still generates dots.
-    if (allowDots && fillEntireGrid && emptyCount > maxOrphans) {
-      _log('Level $levelNumber Attempt $attempt: too many orphans '
-          '$emptyCount/$maxOrphans\n');
+    if (fillEntireGrid && emptyCount > maxOrphans) {
+      _log('Level $levelNumber Attempt $attempt: too many orphans $emptyCount/$maxOrphans\n');
       return null;
     }
 
+    // Create orphan dots with V2 difficulty-scaled coloring
     final orphanDots = <OrphanDot>[];
-    if (allowDots && emptyCount > 0) {
+    if (emptyCount > 0) {
       final emptyKeysPacked = maskCells
           .where((c) => !occupiedPacked.contains(c[0] * 1000 + c[1]))
           .map((c) => c[0] * 1000 + c[1])
@@ -763,7 +698,6 @@ class LevelGeneratorV2 {
         var d = currentDir.delta;
         int nr = head[0] + d[0], nc = head[1] + d[1];
         final visited = <int>{};
-        final visitedDir = <int, int>{};
 
         while (nr >= 0 && nr < gridSize && nc >= 0 && nc < gridSize) {
           final kp = nr * 1000 + nc;
@@ -819,16 +753,6 @@ class LevelGeneratorV2 {
             }
           }
 
-          // Detect infinite redirection loops: same (cell, direction) twice.
-          final keyWithDir = nr * 1000 + nc;
-          if (visitedDir.containsKey(keyWithDir)) {
-            // Loop detected — discard this dot candidate, try the next position.
-            // (The cell is already marked occupied in the candidate state,
-            //  so we exit the path trace and let the calling code retry.)
-            break;
-          }
-          visitedDir[keyWithDir] = 1;
-
           d = currentDir.delta;
           nr += d[0]; nc += d[1];
         }
@@ -848,15 +772,11 @@ class LevelGeneratorV2 {
     }
 
     // ── V2: Color pair mechanic mix ───────────────────────────────────────────
-    // STRICT GATE: no pairs before level 16 for any level type.
-    // Constraint ladder: tiers 1-2 generate pairs (tier 2 drops one); tiers 3+
-    // generate zero pairs. ColorLock stays ENABLED (reversible master switch).
-    if (allowPairs &&
-        _colorLockEnabled &&
-        (levelNumber == 2 ||
-            (type != LevelType.tutorial && levelNumber >= 16))) {
-      _mechanicMixV2(arrows, levelNumber, type, rng, gridSize, orphanDots,
-          pairReduction);
+    // STRICT GATE: no pairs before level 16 for any level type
+    if (levelNumber == 2 ||
+        (type != LevelType.tutorial && levelNumber >= 16)) {
+      _mechanicMixV2(
+          arrows, levelNumber, type, rng, gridSize, orphanDots);
     }
 
     final level = LevelModel(
@@ -877,7 +797,6 @@ class LevelGeneratorV2 {
         _log('Level $levelNumber Attempt $attempt: greedy FAILED\n');
         return null;
       }
-      _logTierSuccess(levelNumber, tier, level, mask.length);
       _log('Level $levelNumber Attempt $attempt: SUCCEEDED (greedy)\n');
       return level.copyWith(solutionOrder: greedyOrder);
     }
@@ -887,57 +806,8 @@ class LevelGeneratorV2 {
       _log('Level $levelNumber Attempt $attempt: solver failed\n');
       return null;
     }
-    _logTierSuccess(levelNumber, tier, level, mask.length);
     _log('Level $levelNumber Attempt $attempt: SUCCEEDED\n');
     return level.copyWith(solutionOrder: quickSolution);
-  }
-
-  // ── Constraint ladder helpers ──────────────────────────────────────────────
-  /// Maps a 0-based attempt index to its constraint tier (1-7).
-  ///   tier 1: full target           tier 2: drop 1 pair
-  ///   tier 3: 0 pairs/dots, 0.75    tier 4: 0 pairs/dots, 0.70
-  ///   tier 5: 0 pairs/dots, 0.65    tier 6: board −2, 0 pairs/dots, 0.65
-  ///   tier 7: guaranteed rectangle fallback
-  static int _tierForAttempt(int attempt) {
-    if (attempt < 3)  return 1;
-    if (attempt < 6)  return 2;
-    if (attempt < 9)  return 3;
-    if (attempt < 12) return 4;
-    if (attempt < 15) return 5;
-    if (attempt < 18) return 6;
-    return 7;
-  }
-
-  /// Minimum arrow-coverage fraction (of the mask) required to accept a level
-  /// generated at [tier]. Lower tiers relax the floor so sparser boards pass.
-  static double _fillFloorForTier(int tier) {
-    switch (tier) {
-      case 1:
-      case 2:
-        return 0.80;
-      case 3:
-        return 0.75;
-      case 4:
-        return 0.70;
-      default:
-        return 0.65; // tiers 5-7
-    }
-  }
-
-  /// Logs the tier at which [level] finally generated (constraint-ladder trace).
-  static void _logTierSuccess(
-      int levelNumber, int tier, LevelModel level, int maskLength) {
-    final int lockArrows =
-        level.arrows.where((a) => a.mechanic == SnakeMechanic.colorLock).length;
-    final int pairs = lockArrows ~/ 2;
-    int arrowCells = 0;
-    for (final a in level.arrows) {
-      arrowCells += a.path.length;
-    }
-    final double fill = maskLength == 0 ? 0.0 : arrowCells / maskLength;
-    print('[Level $levelNumber] generated at tier $tier '
-        '(pairs=$pairs, dots=${level.orphanDots.length}, '
-        'fill=${fill.toStringAsFixed(2)})');
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1023,46 +893,36 @@ class LevelGeneratorV2 {
     if (type == LevelType.god)  return 0.98; // God levels 98% grid coverage
     if (type == LevelType.boss) return 0.94; // Boss levels 94% grid coverage
 
-    if      (levelNumber <= 10)  return 0.90;
-    else if (levelNumber <= 30)  return 0.90;
+    if      (levelNumber <= 10)  return 0.80;
+    else if (levelNumber <= 30)  return 0.88;
     else                         return 0.95;
   }
 
   // ── V2: Direction dot color probability ──────────────────────────────────
   static double _colorProbFor(int levelNumber, LevelType type) {
-    // Direction-change dot probability (restored from V1).
-    if (levelNumber == 395 || levelNumber == 437) {
-      return 0.0; // no direction dots!
-    } else if (type == LevelType.god) {
-      // God: always has direction dots. Minimum 0.50, ramps to 0.88.
-      if (levelNumber <= 7) return 0.50; // First god level
-      if (levelNumber <= 20) return 0.65;
-      if (levelNumber <= 50) return 0.78;
-      return 0.88;
-    } else if (type == LevelType.boss) {
-      // Boss: always has direction dots. Minimum 0.35, ramps to 0.80.
-      if (levelNumber <= 7) return 0.35; // First boss level
-      if (levelNumber <= 20) return 0.50;
-      if (levelNumber <= 50) return 0.65;
-      return 0.80;
-    } else if (levelNumber == 3) {
-      return 0.60; // Tutorial level 3: colored orphan dots
-    } else if (levelNumber <= 14) {
-      return 0.0; // Normal 4-14: no direction dots
-    } else {
-      // Normal 15+: progressive introduction
-      if (levelNumber <= 30) return 0.10; // Level 15-30: very gentle introduction
-      if (levelNumber <= 60) return 0.20; // Level 31-60
-      if (levelNumber <= 150) return 0.40; // Level 61-150
-      if (levelNumber <= 300) return 0.65; // Level 151-300
-      return 0.80; // Level 300+
+    // STRICT GATE: no direction dots before level 21 (any type)
+    if (levelNumber <= 20) return 0.0;
+    if (levelNumber == 395 || levelNumber == 437) return 0.0;
+
+    if (type == LevelType.god) {
+      if      (levelNumber < 35)  return 0.80;
+      else if (levelNumber < 60)  return 0.88;
+      else                        return 0.95;
     }
+    if (type == LevelType.boss) {
+      if      (levelNumber < 35)  return 0.70;
+      else if (levelNumber < 60)  return 0.82;
+      else                        return 0.92;
+    }
+    // Normal levels >= 21
+    if      (levelNumber < 40)  return 0.60;
+    else if (levelNumber < 80)  return 0.80;
+    else                        return 0.92;
   }
 
   // ── V2: Color pair mechanic mix ───────────────────────────────────────────
   static void _mechanicMixV2(List<ArrowModel> arrows, int level, LevelType type,
-      Random rng, int gridSize, List<OrphanDot> orphanDots,
-      [int pairReduction = 0]) {
+      Random rng, int gridSize, List<OrphanDot> orphanDots) {
     if (arrows.length < 4) return;
 
     // STRICT GATE: no pairs before level 16
@@ -1093,9 +953,6 @@ class LevelGeneratorV2 {
 
     pairs = pairs.clamp(1, 15); // Max 15 color pairs hard cap
 
-    // Constraint ladder (tier 2): drop exactly one pair to ease generation.
-    if (pairReduction > 0) pairs = (pairs - pairReduction).clamp(0, 15);
-
     if (level == 395 || level == 437) pairs = 0;
     if (pairs == 0) return;
 
@@ -1123,8 +980,9 @@ class LevelGeneratorV2 {
     }
     edgeIndices.shuffle(rng);
     centerIndices.shuffle(rng);
-    allStdIndices.shuffle(rng);      int actualPairs = 0;
-      final int kSlotAttempts = 5;
+    allStdIndices.shuffle(rng);
+
+    int actualPairs = 0;
 
     // Pass 1: Primary Pairing — Pair ONE Edge Arrow with ONE Center Arrow
     for (int e = 0; e < edgeIndices.length && actualPairs < pairs; e++) {
@@ -1142,6 +1000,25 @@ class LevelGeneratorV2 {
                       (arrows[li].col - arrows[ki].col).abs();
         final minPairDist = (gridSize * 0.25).floor().clamp(2, 15);
         if (zone1 == zone2 || dist < minPairDist) continue;
+
+        final allCells = <String>{};
+        for (final a in arrows) {
+          for (final pt in a.path) allCells.add('${pt[0]},${pt[1]}');
+        }
+        final otherThanKey  = Set<String>.from(allCells)
+          ..removeAll(arrows[ki].path.map((p) => '${p[0]},${p[1]}'));
+        final otherThanLock = Set<String>.from(allCells)
+          ..removeAll(arrows[li].path.map((p) => '${p[0]},${p[1]}'));
+
+        // Pairwise exit-ray gate — identical to the one Pass 2 / Pass 3 already
+        // apply. Each partner's exit ray must clear every other arrow's body,
+        // including its partner's. Without it Pass 1 can emit a pair whose rays
+        // cross each other, which the verifier rejects as a mutual deadlock
+        // (and which _greedySolve tolerates, because a pair may legitimately
+        // exit across its partner's body when both leave together).
+        final keyClear  = _simulateExitClear(arrows[ki], gridSize, otherThanKey,  orphanMap);
+        final lockClear = _simulateExitClear(arrows[li], gridSize, otherThanLock, orphanMap);
+        if (!keyClear || !lockClear) continue;
 
         final oldKi = arrows[ki], oldLi = arrows[li];
         arrows[ki] = arrows[ki].copyWith(
@@ -1239,21 +1116,6 @@ class LevelGeneratorV2 {
       }
     }
 
-    // ── Whole-system ColorLock validation (CHANGE 2) ────────────────────────────
-    // Run only when ColorLock is enabled AND the level reached the pair phase.
-    if (_colorLockEnabled &&
-        (level >= 16 || level == 2) &&
-        actualPairs > 0) {
-      bool valid = _validateColorLockSystem(arrows, level, type, rng, gridSize,
-          actualPairs);
-      if (!valid) {
-        // Discard the last-added pair, retry that slot, then fall back on the
-        // pair count as the last resort (per CHANGE 2, steps 4–6).
-        actualPairs = _reducePairsOnDeadlock(arrows, level, type, rng, gridSize,
-            actualPairs, kSlotAttempts);
-      }
-    }
-
     // Pass 3: Ultimate Fallback if level >= 16 and actualPairs == 0 (Guarantee AT LEAST 1 pair!)
     if (actualPairs == 0 && (level >= 16 || level == 2)) {
       for (int i = 0; i < allStdIndices.length && actualPairs < 1; i++) {
@@ -1310,126 +1172,137 @@ class LevelGeneratorV2 {
         }
       }
     }
+
+    // ── Post-placement whole-system validation ──────────────────────────────
+    // Every pair was validated at the moment it was added, but the greedy solve
+    // run at pair-1 time cannot know which pairs will follow. Several pairs can
+    // interact to form a cycle deadlock that only appears in the fully
+    // assembled board. Re-simulate now that all pairs are placed; if the whole
+    // system still deadlocks, demote the LAST pair (highest colorGroup) and
+    // re-check, until the board is solvable or no pairs remain.
+    //
+    // Termination: each step removes one pair, so at worst every pair is
+    // demoted and a standard-only board is solvable by construction.
+    // Determinism: no re-shuffling — the same seed yields the same pair
+    // selection and therefore the same demotion cascade.
+    int validPairs = actualPairs;
+    while (validPairs > 0) {
+      final testLevel = LevelModel(
+        levelNumber: level,
+        gridSize: gridSize,
+        arrows: arrows,
+        patternName: 'validate',
+        difficulty: Difficulty.easy,
+        mask: arrows
+            .expand((a) => a.path.map((p) => '${p[0]},${p[1]}'))
+            .toSet(),
+        orphanDots: orphanDots,
+      );
+      final greedyOk = gridSize > 20
+          ? _greedySolve(testLevel) != null
+          : LevelSolver.solve(testLevel, 3000) != null;
+      // Second gate — the verifier's own pairwise criterion. The greedy solve
+      // alone cannot catch this class of failure: _simulateExit permits a
+      // pair's ray to cross its partner's body (both leave together), while the
+      // verifier rejects that unconditionally.
+      final noPairDeadlock = !_hasColorLockDeadlock(arrows, gridSize, orphanMap);
+      if (greedyOk && noPairDeadlock) break;
+      // Deadlock detected — demote the LAST pair (highest colorGroup).
+      _demoteLastPair(arrows, validPairs - 1);
+      validPairs--;
+    }
+    actualPairs = validPairs;
   }
 
-  // ── V2: Whole-system ColorLock validation ───────────────────────────────
-  /// Runs the board-level simulation from CHANGE 2 and returns false on
-  /// deadlock. Called after the pair-assignment loop; on failure the caller
-  /// may reduce the pair count and retry.
-  static bool _validateColorLockSystem(
-      List<ArrowModel> arrows, int level, LevelType type, Random rng,
-      int gridSize, int pairCount) {
-    // Working copy of arrows (we peel partners in place; restore the pair
-    // entry point by passing a fresh copy to each retry — the caller passes
-    // the same list, so we work on a shallow copy of the model list.
-    final working = List<ArrowModel>.from(arrows);
-
-    // Peelable keys for every arrow in the working copy.
-    final peelable = <int, bool>{};
-    for (int i = 0; i < working.length; i++) {
-      peelable[i] = false;
-    }
-
-    int remaining = working.length;
-
-    while (remaining > 0) {
-      final int? cand = _pickColorLockCandidate(working, peelable, gridSize);
-      if (cand == null) {
-        // DEADLOCK: no arrow can fire and its partner is not peeled yet.
-        return false;
-      }
-
-      // Peel the candidate and its ColorLock partner (if also clear).
-      final int ki = cand;
-      peelable[ki] = true;
-      remaining--;
-
-      // Find the partner of arrow ki (same colorGroup) and peel it too if free.
-      final int? partner = _findColorLockPartner(working, ki, gridSize, peelable);
-      if (partner != null) {
-        peelable[partner] = true;
-        remaining--;
-      }
-    }
-
-    return true;
-  }
-
-  static int? _pickColorLockCandidate(List<ArrowModel> arrows, Map<int, bool> peelable,
-      int gridSize) {
+  /// Demotes the ColorLock pair whose group id is [pairIndex] back to plain
+  /// standard arrows.
+  ///
+  /// NOTE: `ArrowModel.copyWith` merges via `colorGroup: colorGroup ??
+  /// this.colorGroup`, so passing `colorGroup: null` silently KEEPS the old
+  /// value. The arrow is therefore rebuilt from scratch here so the pairing is
+  /// genuinely cleared.
+  static void _demoteLastPair(List<ArrowModel> arrows, int pairIndex) {
     for (int i = 0; i < arrows.length; i++) {
-      if (peelable[i] == true) continue; // already peeled?
-      if (arrows[i].mechanic != SnakeMechanic.colorLock) continue;
-      if (!_exitRayClear(arrows, i, peelable, gridSize)) continue;
-      final int? partner = _findColorLockPartner(arrows, i, gridSize, peelable);
-      if (partner == null) continue; // no partner -> not a pair arrow
-      if (peelable[partner] != true) continue; // partner not peelable yet
-      return i;
+      if (arrows[i].colorGroup == pairIndex &&
+          arrows[i].mechanic == SnakeMechanic.colorLock) {
+        final a = arrows[i];
+        arrows[i] = ArrowModel(
+          id: a.id,
+          row: a.row,
+          col: a.col,
+          direction: a.direction,
+          state: a.state,
+          isPartOfPattern: a.isPartOfPattern,
+          mechanic: SnakeMechanic.standard,
+          path: a.path,
+        );
+      }
     }
-    return null;
   }
 
-  // Returns the partner index sharing the same colorGroup, or null if none.
-  static int? _findColorLockPartner(List<ArrowModel> arrows, int me,
-      int gridSize, Map<int, bool> peelable) {
-    final int? myGroup = arrows[me].colorGroup;
-    if (myGroup == null) return null;
+  /// True when any ColorLock pair on the board has one partner's exit ray
+  /// crossing the other's body — the exact condition `pregenerate_levels.dart`'s
+  /// `_verifyLevel` flags as "ColorLock mutual deadlock in group N".
+  static bool _hasColorLockDeadlock(List<ArrowModel> arrows, int gridSize,
+      Map<String, OrphanDotType> orphanMap) {
+    final groups = <int, List<int>>{};
     for (int i = 0; i < arrows.length; i++) {
-      if (i == me) continue;
-      if (arrows[i].mechanic != SnakeMechanic.colorLock) continue;
-      if (arrows[i].colorGroup == myGroup) return i;
+      final g = arrows[i].colorGroup;
+      if (g != null && arrows[i].mechanic == SnakeMechanic.colorLock) {
+        groups.putIfAbsent(g, () => []).add(i);
+      }
     }
-    return null;
+    for (final members in groups.values) {
+      if (members.length != 2) continue;
+      final a1 = arrows[members[0]];
+      final a2 = arrows[members[1]];
+      final a1Cells = a1.path.map((p) => '${p[0]},${p[1]}').toSet();
+      final a2Cells = a2.path.map((p) => '${p[0]},${p[1]}').toSet();
+      // Verifier rejects when EITHER direction shows a ray hit.
+      if (_exitRayHitsSet(a1, gridSize, a2Cells, orphanMap) ||
+          _exitRayHitsSet(a2, gridSize, a1Cells, orphanMap)) {
+        return true;
+      }
+    }
+    return false;
   }
 
-  // True when the exit ray (with current fill of the board) has zero blockers
-  // from the head of arrow[i], ignoring peeled arrows. The generator's
-  // occupancy intent is the union of all arrow bodies; we test that union
-  // structurally here.
-  static bool _exitRayClear(List<ArrowModel> arrows, int index, Map<int, bool> peelable,
-      int gridSize) {
-    final ArrowModel arrow = arrows[index];
-    ArrowDirection dir = arrow.direction;
-    int nr = arrow.path[0][0] + dir.delta[0];
-    int nc = arrow.path[0][1] + dir.delta[1];
+  /// Exact mirror of the verifier's `_exitPassesThroughSet`: walks [arrow]'s
+  /// exit ray (redirecting at orphan dots) and reports whether it visits any
+  /// cell of [targetSet]. Revisiting a cell reports false, matching the
+  /// verifier. The target test deliberately runs BEFORE the dot table, so a dot
+  /// sitting on a partner's body cell does not mask the hit — this is the one
+  /// place where this differs from `_simulateExitClear`, which checks dots first
+  /// and treats the set as a full occupancy map rather than a target set.
+  static bool _exitRayHitsSet(ArrowModel arrow, int gridSize,
+      Set<String> targetSet, Map<String, OrphanDotType> orphanDots) {
+    ArrowDirection currentDir = arrow.direction;
+    final head = arrow.path[0];
+    var d = currentDir.delta;
+    int nr = head[0] + d[0];
+    int nc = head[1] + d[1];
+    final visited = <String>{};
 
     while (nr >= 0 && nr < gridSize && nc >= 0 && nc < gridSize) {
-      final packed = nr * 1000 + nc;
-      if (peelable[packed] == true) continue;
-      // A non-peeled arrow occupies this cell. We check every other arrow's
-      // body for the same cell (the only occupancy we have structurally).
-      bool blocked = false;
-      for (int k = 0; k < arrows.length && !blocked; k++) {
-        if (k == index) continue;
-        if (peelable.containsKey(k * 1000 + nr * 1000 + nc)) continue;
-        for (final pt in arrows[k].path) {
-          if (pt[0] == nr && pt[1] == nc) { blocked = true; break; }
-        }
-      }
-      if (blocked) return false;
-      nr += dir.delta[0];
-      nc += dir.delta[1];
-    }
-    return true;
-  }
+      final key = '$nr,$nc';
+      if (visited.contains(key)) return false;
+      visited.add(key);
 
-  // Reduce pair count on deadlock, respecting the change plan:
-  // retry the last slot up to kSlotAttempts, then drop the count by 1.
-  static int _reducePairsOnDeadlock(
-      List<ArrowModel> arrows, int level, LevelType type, Random rng,
-      int gridSize, int actualPairs, int kSlotAttempts) {
-    for (int retry = 0; retry < kSlotAttempts; retry++) {
-      // Re-pick the last pair slot with a different arrow combination is not
-      // expressible without re-running the assignment loop; instead we retry
-      // the whole slot search randomly (same target count, different order).
-      // The generator shuffles index lists before each pass, so a fresh attempt
-      // is forced by re-shuffling; here we simply re-run the assignment logic
-      // inline at the reduced count. For simplicity the delegate here just
-      // decrements and lets the caller re-run the assignment phase.
-      actualPairs--;
-      if (actualPairs < 0) return 0;
+      if (targetSet.contains(key)) return true;
+
+      if (orphanDots.containsKey(key)) {
+        final dotType = orphanDots[key]!;
+        if      (dotType == OrphanDotType.up)    currentDir = ArrowDirection.up;
+        else if (dotType == OrphanDotType.down)  currentDir = ArrowDirection.down;
+        else if (dotType == OrphanDotType.left)  currentDir = ArrowDirection.left;
+        else if (dotType == OrphanDotType.right) currentDir = ArrowDirection.right;
+      }
+
+      d = currentDir.delta;
+      nr += d[0];
+      nc += d[1];
     }
-    return actualPairs;
+    return false;
   }
 
   // ── V2: Shape selection with no-repeat rule ────────────────────────────────
@@ -1856,62 +1729,6 @@ class LevelGeneratorV2 {
       difficulty: Difficulty.easy,
       solutionOrder: arrows.reversed.map((a) => a.id).toList(),
       mask: mask,
-    );
-  }
-
-  // ── Tier 7: guaranteed fallback (ALWAYS succeeds) ─────────────────────────
-  /// Builds a trivially-solvable level on a plain rectangle mask. 8-12 arrows
-  /// sit on the border pointing straight outward from the centre, so every
-  /// arrow's exit path leaves the board immediately and nothing can block it.
-  /// This is the final rung of the constraint ladder — a level is never skipped.
-  static LevelModel _guaranteedFallback(
-      int levelNumber, int gridSize, LevelType type) {
-    final mask = MaskGeneratorV2.squareMask(gridSize);
-    final arrows = <ArrowModel>[];
-
-    // Three spread-out rail positions per edge → 12 outward arrows. Interior
-    // offsets keep the four corners free so no two arrows overlap.
-    final rail = <int>{gridSize ~/ 4, gridSize ~/ 2, (gridSize * 3) ~/ 4}
-        .where((v) => v > 0 && v < gridSize - 1)
-        .toList()
-      ..sort();
-
-    int i = 0;
-    for (final v in rail) {
-      arrows.add(_borderArrow(levelNumber, i++, 0, v, ArrowDirection.up));
-      arrows.add(
-          _borderArrow(levelNumber, i++, gridSize - 1, v, ArrowDirection.down));
-      arrows.add(_borderArrow(levelNumber, i++, v, 0, ArrowDirection.left));
-      arrows.add(_borderArrow(
-          levelNumber, i++, v, gridSize - 1, ArrowDirection.right));
-    }
-
-    return LevelModel(
-      levelNumber: levelNumber,
-      gridSize: gridSize,
-      arrows: arrows,
-      patternName: 'fallback',
-      difficulty: _difficultyFor(levelNumber, type),
-      solutionOrder: arrows.map((a) => a.id).toList(),
-      maskShape: MaskShape.square,
-      mask: mask,
-      orphanDots: const [],
-    );
-  }
-
-  /// Single-cell arrow on the border, pointing straight off the board.
-  static ArrowModel _borderArrow(
-      int levelNumber, int index, int row, int col, ArrowDirection dir) {
-    return ArrowModel(
-      id: 'fb_${levelNumber}_$index',
-      row: row,
-      col: col,
-      direction: dir,
-      isPartOfPattern: true,
-      path: [
-        [row, col]
-      ],
-      mechanic: SnakeMechanic.standard,
     );
   }
 
