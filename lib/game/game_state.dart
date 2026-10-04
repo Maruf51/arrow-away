@@ -30,9 +30,15 @@ class GameState extends ChangeNotifier {
   final void Function() onGameOver;
   final void Function() onLifeLost;
   final void Function() onDeadlock;
+  final String arrowSkin;
+  final int arrowSpeedIndex;
+  final bool vibrationEnabled;
 
   GameState({
     required LevelModel level,
+    this.arrowSkin = 'classic',
+    this.arrowSpeedIndex = 1,
+    this.vibrationEnabled = true,
     required this.onLevelComplete,
     required this.onGameOver,
     required this.onLifeLost,

@@ -11,6 +11,7 @@ import 'screens/level_select/level_select_screen.dart';
 import 'screens/game/game_screen.dart';
 import 'screens/game_over/game_over_screen.dart';
 import 'screens/settings/settings_screen.dart';
+import 'widgets/fps_counter.dart';
 
 class ArrowPuzzleApp extends StatelessWidget {
   const ArrowPuzzleApp({super.key});
@@ -19,22 +20,34 @@ class ArrowPuzzleApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final progress = context.watch<ProgressRepository>();
 
-    final themeMode = progress.themeMode;
-    final systemBrightness = MediaQuery.platformBrightnessOf(context);
-    final isDark = themeMode == ThemeMode.dark ||
-        (themeMode == ThemeMode.system && systemBrightness == Brightness.dark);
-    AppColors.updateTheme(isDark);
+    // The new design is always dark purple — ignore user theme preference for UI colours
+    AppColors.updateTheme(true);
 
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-      statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
     ));
 
     return MaterialApp(
       title: 'Arrow Escape',
       debugShowCheckedModeBanner: false,
-      themeMode: themeMode,
+      // FPS overlay (toggled via Settings → Show FPS). The builder sits
+      // above the Navigator, so the chip renders on every route.
+      builder: (context, child) {
+        return Stack(
+          children: [
+            child ?? const SizedBox.shrink(),
+            if (progress.showFps)
+              Positioned(
+                left: 12,
+                bottom: 12 + MediaQuery.viewPaddingOf(context).bottom,
+                child: const FpsCounter(),
+              ),
+          ],
+        );
+      },
+      themeMode: ThemeMode.dark,
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(

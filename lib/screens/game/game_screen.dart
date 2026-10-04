@@ -18,11 +18,13 @@ import '../../data/repositories/level_repository.dart';
 import '../../ads/ad_manager.dart';
 import '../../game/arrow_puzzle_game.dart';
 import '../../game/game_state.dart';
-import '../../widgets/lives_bar.dart';
-import '../../widgets/wavy_progress_bar.dart';
+
 import '../../widgets/arrow_line.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/audio_manager.dart';
+import '../../widgets/ribbon_header.dart';
+import '../../widgets/shop_dialog.dart';
+import '../main_menu/main_menu_screen.dart' show HowToPlayDialog;
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
@@ -123,9 +125,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     _showingDeadlock = false;
     _inspectingDeadlock = false;
     _transformationController.value = Matrix4.identity();
-    _gameState?.removeListener(_onGameStateChanged);
+    final progress = context.read<ProgressRepository>();
+    final skin = progress.equippedSkin;
     _gameState = GameState(
       level: _level,
+      arrowSkin: skin,
+      arrowSpeedIndex: progress.arrowSpeedIndex,
+      vibrationEnabled: progress.vibrationEnabled,
       onLevelComplete: _onLevelComplete,
       onGameOver: _onGameOver,
       onLifeLost: _onLifeLost,
@@ -285,17 +291,376 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     setState(() => _isGamePaused = true);
     await showDialog(
       context: context,
+      barrierColor: Colors.black87,
       barrierDismissible: true,
       builder: (_) => _GameSettingsDialog(
-        onRestart: () {
+        onResume: () {
           Navigator.pop(context);
-          _handleRestart();
+        },
+        onRestart: () async {
+          final shouldRestart = await _showRestartConfirmDialog();
+          if (shouldRestart && mounted) {
+            Navigator.pop(context); // close settings dialog
+            _handleRestart();
+          }
+        },
+        onHelp: () {
+          showDialog(
+            context: context,
+            barrierColor: Colors.black87,
+            builder: (_) => const HowToPlayDialog(),
+          );
+        },
+        onQuit: () async {
+          final shouldExit = await _showExitConfirmDialog();
+          if (shouldExit && mounted) {
+            Navigator.pop(context); // close settings dialog
+            _handleMenu();
+          }
         },
       ),
     );
     if (mounted) {
       setState(() => _isGamePaused = false);
     }
+  }
+
+  void _showShopDialog(BuildContext ctx, {int initialTab = 0}) {
+    showDialog<void>(
+      context: ctx,
+      barrierColor: Colors.black87,
+      builder: (_) => ShopDialog(initialTab: initialTab),
+    );
+  }
+
+  Future<bool> _showRestartConfirmDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 340),
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.topCenter,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 22),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF9EE),
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.fromLTRB(20, 36, 20, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 58,
+                        height: 58,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF2DC),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFFFFDF9E), width: 1.5),
+                        ),
+                        child: const Icon(
+                          Icons.refresh_rounded,
+                          color: Color(0xFFE67E22),
+                          size: 30,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Restart Level?',
+                        style: GoogleFonts.nunito(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF2C194D),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Are you sure you want to restart this level?\nIn-level progress will be lost.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.nunito(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF6B5885),
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      Row(
+                        children: [
+                          // CANCEL
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                AudioManager.instance.playClick();
+                                Navigator.pop(context, false);
+                              },
+                              child: Container(
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF9E54FF), Color(0xFF7020CA)],
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                  ),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  'CANCEL',
+                                  style: GoogleFonts.nunito(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          // RESTART
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                AudioManager.instance.playClick();
+                                Navigator.pop(context, true);
+                              },
+                              child: Container(
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFFFF4D79), Color(0xFFE0245E)],
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                  ),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  'RESTART',
+                                  style: GoogleFonts.nunito(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const Positioned(
+                top: 0,
+                child: RibbonHeader(
+                  title: 'RESTART',
+                  bannerWidth: 230,
+                  height: 44,
+                  fontSize: 17,
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFFF7A45), Color(0xFFE65100)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  tailColor: Color(0xFF8C3200),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return result ?? false;
+  }
+
+  Future<bool> _showExitConfirmDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 340),
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.topCenter,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 22),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF9EE),
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.fromLTRB(20, 36, 20, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 58,
+                        height: 58,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFECEF),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFFFFC5D0), width: 1.5),
+                        ),
+                        child: const Icon(
+                          Icons.exit_to_app_rounded,
+                          color: Color(0xFFE93B67),
+                          size: 28,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Exit to Main Menu?',
+                        style: GoogleFonts.nunito(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF2C194D),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Are you sure you want to return to the main menu?\nIn-level progress will be lost.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.nunito(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF6B5885),
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      Row(
+                        children: [
+                          // STAY button
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                AudioManager.instance.playClick();
+                                Navigator.pop(context, false);
+                              },
+                              child: Container(
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF9E54FF), Color(0xFF7020CA)],
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                  ),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                alignment: Alignment.center,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'STAY',
+                                      style: GoogleFonts.nunito(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.white,
+                                        letterSpacing: 1,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          // EXIT button
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                AudioManager.instance.playClick();
+                                Navigator.pop(context, true);
+                              },
+                              child: Container(
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFFFF3366), Color(0xFFD61848)],
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                  ),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                alignment: Alignment.center,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(Icons.home_rounded, color: Colors.white, size: 18),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'EXIT',
+                                      style: GoogleFonts.nunito(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.white,
+                                        letterSpacing: 1,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const Positioned(
+                top: 0,
+                child: RibbonHeader(
+                  title: 'EXIT LEVEL',
+                  bannerWidth: 230,
+                  height: 44,
+                  fontSize: 17,
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFE93B67), Color(0xFFBA1C43)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  tailColor: Color(0xFF750E28),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return result ?? false;
   }
 
   void _handleNextLevel() {
@@ -649,14 +1014,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
     final levelType = AppConstants.levelTypeFor(_level.levelNumber);
 
-    // Calculate level progress
-    final totalArrows = _level.arrows.length;
-    final activeArrows =
-        _gameState?.arrows.where((a) => a.state != ArrowState.sliding).length ??
-            totalArrows;
-    final clearedArrows = totalArrows - activeArrows;
-    final progressVal =
-        totalArrows > 0 ? (clearedArrows / totalArrows).clamp(0.0, 1.0) : 0.0;
 
     return Scaffold(
       body: Container(
@@ -669,12 +1026,15 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 level: _level,
                 levelType: levelType,
                 lives: _lives,
-                progress: progressVal,
-                onBack: () {
-                  if (Navigator.canPop(context)) {
-                    Navigator.pop(context);
+                onPause: _showSettingsDialog,
+                onHint: () {
+                  // Use a hint if available, otherwise open shop
+                  final repo = context.read<ProgressRepository>();
+                  if (repo.hints > 0) {
+                    repo.useHint();
+                    setState(() {});
                   } else {
-                    Navigator.pushReplacementNamed(context, '/menu');
+                    _showShopDialog(context, initialTab: 2);
                   }
                 },
                 onSettings: _showSettingsDialog,
@@ -1515,139 +1875,143 @@ class _TopBar extends StatelessWidget {
   final LevelModel level;
   final LevelType levelType;
   final int lives;
-  final double progress;
-  final VoidCallback onBack;
+  final VoidCallback onPause;
+  final VoidCallback onHint;
   final VoidCallback onSettings;
 
   const _TopBar({
     required this.level,
     required this.levelType,
     required this.lives,
-    required this.progress,
-    required this.onBack,
+    required this.onPause,
+    required this.onHint,
     required this.onSettings,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 115,
+      height: 72,
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Stack(
-        fit: StackFit.expand,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Left Side (Back Button aligned left)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: GestureDetector(
-              onTap: () {
-                AudioManager.instance.playClick();
-                onBack();
-              },
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceLight,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(LucideIcons.arrowLeft,
-                    color: AppColors.textPrimary, size: 18),
-              ),
-            ),
+          // Left: Circular purple button with Pause ||
+          _buildCircleButton(
+            icon: Icons.pause_rounded,
+            onTap: () {
+              AudioManager.instance.playClick();
+              onPause();
+            },
           ),
 
-          // Center Side (Level Label, Progress Bar & Lives, perfectly centered)
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                if (levelType.isSpecial)
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 4),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: (levelType == LevelType.god
-                                ? AppColors.accent
-                                : AppColors.accentOrange)
-                            .withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            levelType == LevelType.god
-                                ? LucideIcons.flame
-                                : LucideIcons.zap,
-                            color: levelType == LevelType.god
-                                ? AppColors.accent
-                                : AppColors.accentOrange,
-                            size: 10,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            levelType.label.toUpperCase(),
-                            style: GoogleFonts.nunito(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w900,
-                              color: levelType == LevelType.god
-                                  ? AppColors.accent
-                                  : AppColors.accentOrange,
-                              letterSpacing: 1.0,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    'Level ${level.levelNumber}',
-                    style: GoogleFonts.nunito(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.textPrimary,
+          // Center: LEVEL N & 3 Hearts
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'LEVEL ${level.levelNumber}',
+                style: GoogleFonts.nunito(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: List.generate(
+                  AppConstants.maxLives,
+                  (i) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: Icon(
+                      i < lives ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                      color: i < lives ? const Color(0xFFFF3366) : const Color(0xFF5A457D),
+                      size: 19,
                     ),
                   ),
                 ),
-                const SizedBox(height: 5),
-                // Level progress bar with horizontal wavy liquid animation (width adjusted to 130, height to 10.0)
-                WavyProgressBar(
-                  progress: progress,
-                  width: 130,
-                  height: 10.0,
+              ),
+            ],
+          ),
+
+          // Right: Hint button with red + badge & Settings button
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildCircleButton(
+                icon: Icons.lightbulb_rounded,
+                onTap: () {
+                  AudioManager.instance.playClick();
+                  onHint();
+                },
+                badge: Container(
+                  width: 16,
+                  height: 16,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFF3366),
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.add, color: Colors.white, size: 12),
                 ),
-                const SizedBox(height: 6),
-                // Lives bar centered below the progress bar
-                LivesBar(lives: lives, maxLives: AppConstants.maxLives),
+              ),
+              const SizedBox(width: 10),
+              _buildCircleButton(
+                icon: Icons.settings,
+                onTap: () {
+                  AudioManager.instance.playClick();
+                  onSettings();
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCircleButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    Widget? badge,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                colors: [Color(0xFF8F46E8), Color(0xFF6C28C7)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.8),
+                width: 1.8,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF5615B3).withValues(alpha: 0.5),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
               ],
             ),
+            child: Icon(icon, color: Colors.white, size: 22),
           ),
-
-          // Right Side (Settings Button aligned right)
-          Align(
-            alignment: Alignment.centerRight,
-            child: GestureDetector(
-              onTap: () {
-                AudioManager.instance.playClick();
-                onSettings();
-              },
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceLight,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(LucideIcons.settings,
-                    color: AppColors.textPrimary, size: 18),
-              ),
+          if (badge != null)
+            Positioned(
+              right: -2,
+              top: -2,
+              child: badge,
             ),
-          ),
         ],
       ),
     );
@@ -2103,9 +2467,17 @@ class _DialogButton extends StatelessWidget {
 }
 
 class _GameSettingsDialog extends StatelessWidget {
+  final VoidCallback onResume;
   final VoidCallback onRestart;
+  final VoidCallback onHelp;
+  final VoidCallback onQuit;
 
-  const _GameSettingsDialog({required this.onRestart});
+  const _GameSettingsDialog({
+    required this.onResume,
+    required this.onRestart,
+    required this.onHelp,
+    required this.onQuit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2113,82 +2485,248 @@ class _GameSettingsDialog extends StatelessWidget {
 
     return Dialog(
       backgroundColor: Colors.transparent,
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.surfaceLight, width: 3),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.15),
-              blurRadius: 32,
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 340),
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.topCenter,
           children: [
-            Text(
-              'Settings',
-              style: GoogleFonts.nunito(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                color: AppColors.textPrimary,
+            // Main Cream Card Body
+            Padding(
+              padding: const EdgeInsets.only(top: 22),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF9EE),
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.fromLTRB(16, 36, 16, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 1. Music Switch
+                    _buildSwitchCard('Music', progress.musicEnabled, (val) {
+                      AudioManager.instance.playClick();
+                      progress.setMusicEnabled(val);
+                    }),
+                    const SizedBox(height: 10),
+
+                    // 2. Vibrate Switch
+                    _buildSwitchCard('Vibrate', progress.vibrationEnabled, (val) {
+                      AudioManager.instance.playClick();
+                      progress.setVibrationEnabled(val);
+                    }),
+                    const SizedBox(height: 16),
+
+                    // 3. ▶ RESUME ▶ Button (Full Width, Green)
+                    GestureDetector(
+                      onTap: () {
+                        AudioManager.instance.playClick();
+                        onResume();
+                      },
+                      child: Container(
+                        height: 50,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF2ED573), Color(0xFF1E9C52)],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: const Color(0xFF68EE9F),
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF15733C).withValues(alpha: 0.5),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24),
+                            const SizedBox(width: 6),
+                            Text(
+                              'RESUME',
+                              style: GoogleFonts.nunito(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // 4. Row of 2: RESTART & HELP
+                    Row(
+                      children: [
+                        // RESTART (Orange/Red)
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              AudioManager.instance.playClick();
+                              onRestart();
+                            },
+                            child: Container(
+                              height: 48,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFFFF7A45), Color(0xFFE65100)],
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF9E3800).withValues(alpha: 0.4),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              alignment: Alignment.center,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'RESTART',
+                                    style: GoogleFonts.nunito(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white,
+                                      letterSpacing: 1,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+
+                        // HELP (Yellow)
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              AudioManager.instance.playClick();
+                              onHelp();
+                            },
+                            child: Container(
+                              height: 48,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFFFFC738), Color(0xFFF09B16)],
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFB56A00).withValues(alpha: 0.4),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              alignment: Alignment.center,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.help_outline_rounded, color: Color(0xFF382006), size: 18),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'HELP',
+                                    style: GoogleFonts.nunito(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w900,
+                                      color: const Color(0xFF382006),
+                                      letterSpacing: 1,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // 5. QUIT Button (Full Width, Purple)
+                    GestureDetector(
+                      onTap: () {
+                        AudioManager.instance.playClick();
+                        onQuit();
+                      },
+                      child: Container(
+                        height: 48,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF9E54FF), Color(0xFF7020CA)],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF7020CA).withValues(alpha: 0.4),
+                              blurRadius: 6,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.home_rounded, color: Colors.white, size: 20),
+                            const SizedBox(width: 6),
+                            Text(
+                              'QUIT',
+                              style: GoogleFonts.nunito(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 20),
 
-            // Sound Toggle
-            _DialogSettingsTile(
-              icon: LucideIcons.volume2,
-              label: 'Sound Effects',
-              value: progress.soundEnabled,
-              onChanged: (val) => progress.setSoundEnabled(val),
-            ),
-
-            // Music Toggle
-            _DialogSettingsTile(
-              icon: LucideIcons.music,
-              label: 'Background Music',
-              value: progress.musicEnabled,
-              onChanged: (val) => progress.setMusicEnabled(val),
-            ),
-
-            // Vibration Toggle
-            _DialogSettingsTile(
-              icon: LucideIcons.vibrate,
-              label: 'Vibration',
-              value: progress.vibrationEnabled,
-              onChanged: (val) => progress.setVibrationEnabled(val),
-            ),
-
-            const SizedBox(height: 16),
-            Divider(color: AppColors.surfaceLight, height: 1),
-            const SizedBox(height: 20),
-
-            // Restart Button
-            _DialogButton(
-              label: 'Restart Level',
-              icon: LucideIcons.rotateCcw,
-              gradient: AppColors.primaryGradient,
-              onTap: onRestart,
-            ),
-            const SizedBox(height: 10),
-
-            // Close / Resume Button
-            TextButton(
-              onPressed: () {
-                AudioManager.instance.playClick();
-                Navigator.pop(context);
-              },
-              child: Text(
-                'Resume Game',
-                style: GoogleFonts.nunito(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.primary,
-                ),
+            // Top Ribbon Header overlapping the card
+            const Positioned(
+              top: 0,
+              child: RibbonHeader(
+                title: 'SETTINGS',
+                bannerWidth: 230,
+                height: 44,
+                fontSize: 17,
               ),
             ),
           ],
@@ -2196,45 +2734,38 @@ class _GameSettingsDialog extends StatelessWidget {
       ),
     );
   }
-}
 
-class _DialogSettingsTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  const _DialogSettingsTile({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+  Widget _buildSwitchCard(String label, bool value, ValueChanged<bool> onChanged) {
+    return Container(
+      height: 46,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFDF8),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFFEBE0CC),
+          width: 1.5,
+        ),
+      ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Icon(icon, color: AppColors.textSecondary, size: 20),
-          const SizedBox(width: 12),
           Text(
             label,
             style: GoogleFonts.nunito(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
+              fontSize: 13.5,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF2C194D),
             ),
           ),
-          const Spacer(),
           Switch(
             value: value,
-            onChanged: (val) {
-              AudioManager.instance.playClick();
-              onChanged(val);
-            },
-            activeThumbColor: AppColors.primary,
+            onChanged: onChanged,
+            activeTrackColor: const Color(0xFF7E38E6),
+            activeThumbColor: Colors.white,
+            inactiveTrackColor: const Color(0xFFE8E0F0),
+            inactiveThumbColor: Colors.white,
+            trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
           ),
         ],
       ),

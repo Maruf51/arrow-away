@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-
 import '../../core/app_colors.dart';
 import '../../core/constants.dart';
 import '../../data/repositories/progress_repository.dart';
@@ -16,18 +15,18 @@ class LevelSelectScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final progress = context.watch<ProgressRepository>();
-    const totalVisible = 500; // Show first 500 levels
+    const totalVisible = 500;
 
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(gradient: AppColors.bgGradient),
+        decoration: const BoxDecoration(gradient: AppColors.bgGradient),
         child: SafeArea(
           child: Column(
             children: [
-              // Header
+              // ── Header ─────────────────────────────────────────────────────
               Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Row(
                   children: [
                     GestureDetector(
@@ -36,31 +35,43 @@ class LevelSelectScreen extends StatelessWidget {
                         Navigator.pop(context);
                       },
                       child: Container(
-                        padding: const EdgeInsets.all(8),
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceLight,
-                          borderRadius: BorderRadius.circular(12),
+                          gradient: AppColors.purpleGradient,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.purple.withValues(alpha: 0.5),
+                              blurRadius: 10,
+                            ),
+                          ],
                         ),
-                        child: Icon(Icons.arrow_back_ios_new_rounded,
-                            color: AppColors.textPrimary, size: 18),
+                        child: const Icon(Icons.arrow_back_ios_new_rounded,
+                            color: Colors.white, size: 18),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Text('Select Level',
-                        style: GoogleFonts.nunito(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary)),
+                    const SizedBox(width: 16),
+                    Text(
+                      'ALL LEVELS',
+                      style: GoogleFonts.nunito(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.gold,
+                        letterSpacing: 2,
+                      ),
+                    ),
                   ],
                 ),
               ),
 
-              // Grid
+              // ── Grid ───────────────────────────────────────────────────────
               Expanded(
                 child: GridView.builder(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 8),
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 5,
                     mainAxisSpacing: 10,
                     crossAxisSpacing: 10,
@@ -90,7 +101,8 @@ class LevelSelectScreen extends StatelessWidget {
                           : null,
                     )
                         .animate(
-                            delay: Duration(milliseconds: (index % 20) * 20))
+                            delay:
+                                Duration(milliseconds: (index % 20) * 20))
                         .fadeIn(duration: 200.ms)
                         .scale(
                             begin: const Offset(0.7, 0.7),
@@ -122,16 +134,40 @@ class _LevelCell extends StatelessWidget {
   });
 
   Color get _borderColor {
-    if (!isUnlocked) return AppColors.surfaceLight;
+    if (!isUnlocked) return AppColors.purpleDark;
     switch (levelType) {
       case LevelType.god:
-        return AppColors.accent; // Red
+        return const Color(0xFFE74C3C);
       case LevelType.boss:
-        return const Color(0xFF8E44AD); // Purple for Boss level
+        return AppColors.purpleLight;
       case LevelType.tutorial:
-        return AppColors.accentGreen; // Green
+        return AppColors.green;
       case LevelType.normal:
-        return AppColors.primary.withValues(alpha: 0.4);
+        return AppColors.purple.withValues(alpha: 0.5);
+    }
+  }
+
+  LinearGradient get _cellGradient {
+    if (!isUnlocked) {
+      return const LinearGradient(
+        colors: [Color(0xFF1A0F3C), Color(0xFF200E40)],
+      );
+    }
+    switch (levelType) {
+      case LevelType.god:
+        return const LinearGradient(
+          colors: [Color(0xFF6B1010), Color(0xFF4A0A0A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        );
+      case LevelType.boss:
+        return AppColors.purpleGradient;
+      default:
+        return const LinearGradient(
+          colors: [Color(0xFF3A1D80), Color(0xFF2A1260)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        );
     }
   }
 
@@ -142,13 +178,13 @@ class _LevelCell extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
-          color: isUnlocked ? AppColors.surface : AppColors.background,
+          gradient: _cellGradient,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: _borderColor, width: 1.5),
           boxShadow: isUnlocked && levelType.isSpecial
               ? [
                   BoxShadow(
-                    color: _borderColor.withValues(alpha: 0.35),
+                    color: _borderColor.withValues(alpha: 0.4),
                     blurRadius: 10,
                   )
                 ]
@@ -157,28 +193,30 @@ class _LevelCell extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Level type badge
+            // Level type badge icon
             if (levelType == LevelType.god)
-              Icon(LucideIcons.flame, color: AppColors.accent, size: 12)
+              const Icon(LucideIcons.flame, color: Color(0xFFE74C3C), size: 12)
             else if (levelType == LevelType.boss)
-              const Icon(LucideIcons.zap, color: Color(0xFF8E44AD), size: 12)
+              Icon(LucideIcons.zap, color: AppColors.purpleLight, size: 12)
             else if (levelType == LevelType.tutorial)
-              Icon(LucideIcons.bookOpen, color: AppColors.accentGreen, size: 12),
+              Icon(LucideIcons.bookOpen, color: AppColors.green, size: 12),
 
             if (!isUnlocked)
-              Icon(Icons.lock_outline_rounded,
-                  color: AppColors.textMuted, size: 20)
+              const Icon(Icons.lock_outline_rounded,
+                  color: Color(0xFF6B5B9A), size: 20)
             else
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: Text('$levelNumber',
-                      style: GoogleFonts.nunito(
-                        fontSize: levelNumber >= 100 ? 13 : 16,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                      )),
+                  child: Text(
+                    '$levelNumber',
+                    style: GoogleFonts.nunito(
+                      fontSize: levelNumber >= 100 ? 13 : 16,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
 
@@ -188,16 +226,15 @@ class _LevelCell extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(
-                    3,
-                    (i) => Text(
-                          i < stars ? '⭐' : '·',
-                          style: TextStyle(
-                            fontSize: i < stars ? 8 : 10,
-                            color: i < stars
-                                ? AppColors.starYellow
-                                : AppColors.textMuted,
-                          ),
-                        )),
+                  3,
+                  (i) => Icon(
+                    i < stars ? Icons.star_rounded : Icons.star_outline_rounded,
+                    size: 9,
+                    color: i < stars
+                        ? AppColors.gold
+                        : AppColors.purpleLight.withValues(alpha: 0.4),
+                  ),
+                ),
               ),
             ],
           ],

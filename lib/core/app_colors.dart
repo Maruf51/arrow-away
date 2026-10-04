@@ -3,130 +3,136 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
-  static bool isDark = false;
+  // The game now uses a single dark purple theme (no light mode theming)
+  static bool isDark = true;
 
   static void updateTheme(bool dark) {
-    isDark = dark;
+    isDark = true; // always dark
   }
 
-  // Brand
-  static Color get primary => isDark ? const Color(0xFF829079) : const Color(0xFF5E6B56);      // Dark forest green / lighter sage in dark mode for contrast
-  static Color get primaryLight => isDark ? const Color(0xFFA8B5A2) : const Color(0xFF829079);
-  static Color get primaryDark => isDark ? const Color(0xFF3C4636) : const Color(0xFF3C4636);
-  static Color get accent => isDark ? const Color(0xFF829079) : const Color(0xFF5E6B56);
-  static Color get accentGold => isDark ? const Color(0xFFA8B5A2) : const Color(0xFF8B9B82);   // Sagey gold
-  static Color get accentGreen => isDark ? const Color(0xFF829079) : const Color(0xFF5E6B56);
-  static Color get accentOrange => isDark ? const Color(0xFFA8B5A2) : const Color(0xFF829079);
+  // ── Brand Purple/Gold palette ──────────────────────────────────────────────
+  static const Color purple        = Color(0xFF7B2FBE); // deep vivid purple
+  static const Color purpleDark    = Color(0xFF4A1A8C); // darker purple
+  static const Color purpleLight   = Color(0xFF9B4FDE); // lighter purple
+  static const Color purpleVibrant = Color(0xFF8B35D6); // mid purple
 
-  // Backgrounds
-  static Color get background => isDark ? const Color(0xFF1E231C) : const Color(0xFFF2EFEA);   // Warm cream / Deep earthy dark green-gray
-  static Color get surface => isDark ? const Color(0xFF2A3027) : const Color(0xFFFFFFFF);      // Card surface / slate/sage dark card
-  static Color get surfaceLight => isDark ? const Color(0xFF3D473A) : const Color(0xFFA8B5A2); // Sage green border/detail
-  static Color get gridBg => isDark ? const Color(0xFF1E231C) : const Color(0xFFF2EFEA);       // Grid background
+  static const Color gold          = Color(0xFFF5A623); // golden yellow
+  static const Color goldLight     = Color(0xFFFFCC44); // lighter gold
+  static const Color goldDark      = Color(0xFFD4881A); // darker gold
 
-  // Arrow direction colors — solid dark green for maximum legibility in light, clean cream/sage in dark
-  static Color get arrowUp    => isDark ? const Color(0xFFECF0EB) : const Color(0xFF3C4636);
-  static Color get arrowDown  => isDark ? const Color(0xFFECF0EB) : const Color(0xFF3C4636);
-  static Color get arrowLeft  => isDark ? const Color(0xFFECF0EB) : const Color(0xFF3C4636);
-  static Color get arrowRight => isDark ? const Color(0xFFECF0EB) : const Color(0xFF3C4636);
+  static const Color green         = Color(0xFF2ECC71); // play button green
+  static const Color greenDark     = Color(0xFF27AE60);
 
-  // Difficulty colors
-  static Color get easy => isDark ? const Color(0xFFA8B5A2) : const Color(0xFF829079);
-  static Color get medium => isDark ? const Color(0xFF96A390) : const Color(0xFF708066);
-  static Color get hard => isDark ? const Color(0xFF829079) : const Color(0xFF5E6B56);
-  static Color get expert => isDark ? const Color(0xFF6F7C66) : const Color(0xFF4C5745);
-  static Color get master => isDark ? const Color(0xFF5E6B56) : const Color(0xFF3C4636);
+  static const Color red           = Color(0xFFE74C3C); // hearts / danger
+  static const Color heartRed      = Color(0xFFFF4757);
+
+  // Background — deep purple/indigo gradient
+  static const Color bgTop         = Color(0xFF1A0A3C);
+  static const Color bgMid         = Color(0xFF1E1045);
+  static const Color bgBottom      = Color(0xFF120830);
+
+  // Surface card (cream/beige for settings dialogs like the reference)
+  static const Color cardCream     = Color(0xFFF5EFE0);
+  static const Color cardBorder    = Color(0xFFE8DCC0);
 
   // Text
-  static Color get textPrimary => isDark ? const Color(0xFFECF0EB) : const Color(0xFF3C4636);
-  static Color get textSecondary => isDark ? const Color(0xFFBDC7B9) : const Color(0xFF5E6B56);
-  static Color get textMuted => isDark ? const Color(0xFF8A9885) : const Color(0xFF829079);
+  static const Color textWhite     = Color(0xFFFFFFFF);
+  static const Color textGold      = Color(0xFFF5A623);
+  static const Color textPurple    = Color(0xFF7B2FBE);
+  static const Color textDark      = Color(0xFF2C1A6B);
+  static const Color textMuted     = Color(0xFF9E8FBF);
 
-  // UI Elements
-  static Color get heartRed => isDark ? const Color(0xFFA8B5A2) : const Color(0xFF5E6B56);
-  static Color get heartEmpty => isDark ? const Color(0xFF3D473A) : const Color(0xFFD3CFC9);
-  static Color get streakFire => isDark ? const Color(0xFFA8B5A2) : const Color(0xFF5E6B56);
-  static Color get coinGold => isDark ? const Color(0xFFF1C40F) : const Color(0xFF829079);
-  static Color get starYellow => isDark ? const Color(0xFFA8B5A2) : const Color(0xFF5E6B56);
-  static Color get borderGlow => isDark ? const Color(0xFF829079) : const Color(0xFF5E6B56);
+  // ── Aliases used by existing code ─────────────────────────────────────────
+  static Color get primary        => purple;
+  static Color get primaryLight   => purpleLight;
+  static Color get primaryDark    => purpleDark;
+  static Color get accent         => gold;
+  static Color get accentGold     => gold;
+  static Color get accentGreen    => green;
+  static Color get accentOrange   => gold;
 
-  // ── Theme-aware Arrow Pair / Group Colors (12 Maximally Distant, Unconfusable Colors) ───
-  // Ordered around the color wheel with max hue separation so pairs 0..N receive zero-confusion colors:
-  // 0: Crimson Red, 1: Cobalt Blue, 2: Emerald Green, 3: Royal Purple, 4: Tangerine Orange, 5: Aqua Cyan,
-  // 6: Hot Pink, 7: Sunflower Yellow, 8: Neon Lime Green, 9: Vibrant Teal, 10: Deep Indigo, 11: Rose Magenta
-  static const List<Color> _groupColorsLight = [
-    Color(0xFFE50914), // 0: Pure Crimson Red (Hue 0°)
-    Color(0xFF0055FF), // 1: Electric Cobalt Blue (Hue 215°)
-    Color(0xFF00A859), // 2: Emerald Mint Green (Hue 140°)
-    Color(0xFF8E24AA), // 3: Deep Royal Purple (Hue 285°)
-    Color(0xFFFF6D00), // 4: Pure Tangerine Orange (Hue 30°)
-    Color(0xFF00B4D8), // 5: Bright Aqua Cyan (Hue 175°)
-    Color(0xFFFF2A8D), // 6: Hot Bubblegum Pink (Hue 320°)
-    Color(0xFFFFA000), // 7: Golden Sunflower Yellow (Hue 55°)
-    Color(0xFF558B2F), // 8: Neon Lime Green (Hue 90°)
-    Color(0xFF00897B), // 9: Vibrant Teal (Hue 160°)
-    Color(0xFF3D5AFE), // 10: Deep Indigo Periwinkle (Hue 250°)
-    Color(0xFFC2185B), // 11: Rose Magenta (Hue 345°)
-  ];
+  static Color get background     => bgBottom;
+  static Color get surface        => const Color(0xFF2A1A5E); // dark purple card
+  static Color get surfaceLight   => const Color(0xFF3D2880); // lighter surface
 
+  static Color get gridBg         => bgBottom;
+
+  // Arrow direction colors
+  static Color get arrowUp    => textWhite;
+  static Color get arrowDown  => textWhite;
+  static Color get arrowLeft  => textWhite;
+  static Color get arrowRight => textWhite;
+
+  // Difficulty colors
+  static Color get easy   => green;
+  static Color get medium => gold;
+  static Color get hard   => purple;
+  static Color get expert => const Color(0xFFE74C3C);
+  static Color get master => const Color(0xFFB33939);
+
+  // UI
+  static Color get heartEmpty  => const Color(0xFF3D2880);
+  static Color get streakFire  => gold;
+  static Color get coinGold    => gold;
+  static Color get starYellow  => gold;
+  static Color get borderGlow  => purple;
+
+  // Text aliases
+  static Color get textPrimary    => textWhite;
+  static Color get textSecondary  => const Color(0xFFCCBBEE);
+  static Color get textMutedAlias => textMuted;
+
+  // ── Group Colors (unchanged — still maximally distinct) ───────────────────
   static const List<Color> _groupColorsDark = [
-    Color(0xFFFF2A4B), // 0: Pure Crimson Red (Hue 0°)
-    Color(0xFF2979FF), // 1: Electric Cobalt Blue (Hue 215°)
-    Color(0xFF00E676), // 2: Emerald Mint Green (Hue 140°)
-    Color(0xFFD500F9), // 3: Deep Royal Purple (Hue 285°)
-    Color(0xFFFF8B00), // 4: Pure Tangerine Orange (Hue 30°)
-    Color(0xFF00E5FF), // 5: Bright Aqua Cyan (Hue 175°)
-    Color(0xFFFF52A1), // 6: Hot Bubblegum Pink (Hue 320°)
-    Color(0xFFFFD600), // 7: Bright Sunflower Yellow (Hue 55°)
-    Color(0xFFAEEA00), // 8: Neon Lime Green (Hue 90°)
-    Color(0xFF1DE9B6), // 9: Vibrant Teal (Hue 160°)
-    Color(0xFF7575FF), // 10: Deep Indigo Periwinkle (Hue 250°)
-    Color(0xFFFF4081), // 11: Rose Magenta (Hue 345°)
+    Color(0xFFFF2A4B),
+    Color(0xFF2979FF),
+    Color(0xFF00E676),
+    Color(0xFFD500F9),
+    Color(0xFFFF8B00),
+    Color(0xFF00E5FF),
+    Color(0xFFFF52A1),
+    Color(0xFFFFD600),
+    Color(0xFFAEEA00),
+    Color(0xFF1DE9B6),
+    Color(0xFF7575FF),
+    Color(0xFFFF4081),
   ];
 
   static Color getGroupColor(int groupIndex) {
-    final list = isDark ? _groupColorsDark : _groupColorsLight;
-    return list[groupIndex % list.length];
+    return _groupColorsDark[groupIndex % _groupColorsDark.length];
   }
 
-
-  // Gradients
-  static LinearGradient get primaryGradient => LinearGradient(
-    colors: isDark 
-      ? [const Color(0xFF4C5745), const Color(0xFF5E6B56)]
-      : [const Color(0xFF5E6B56), const Color(0xFF7A8972)],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-
-  static LinearGradient get secondaryGradient => LinearGradient(
-    colors: isDark
-      ? [const Color(0xFF3D473A), const Color(0xFF4C5745)]
-      : [const Color(0xFFA8B5A2), const Color(0xFFC0CDC0)],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-
-  static LinearGradient get bgGradient => LinearGradient(
-    colors: isDark
-      ? [const Color(0xFF1E231C), const Color(0xFF141912)]
-      : [const Color(0xFFF2EFEA), const Color(0xFFE2DFDA)],
+  // ── Gradients ─────────────────────────────────────────────────────────────
+  static const LinearGradient bgGradient = LinearGradient(
+    colors: [bgTop, bgMid, bgBottom],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
 
-  static LinearGradient get successGradient => LinearGradient(
-    colors: isDark
-      ? [const Color(0xFF3D473A), const Color(0xFF4C5745)]
-      : [const Color(0xFF5E6B56), const Color(0xFF708066)],
+  static const LinearGradient purpleGradient = LinearGradient(
+    colors: [purpleLight, purpleDark],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
-  static LinearGradient get dangerGradient => LinearGradient(
-    colors: isDark
-      ? [const Color(0xFF6B3E36), const Color(0xFF82524A)]
-      : [const Color(0xFF8B5E56), const Color(0xFFA27870)],
+  static const LinearGradient goldGradient = LinearGradient(
+    colors: [goldLight, gold, goldDark],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient greenGradient = LinearGradient(
+    colors: [Color(0xFF2ECC71), Color(0xFF27AE60)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  // Legacy alias
+  static LinearGradient get primaryGradient   => purpleGradient;
+  static LinearGradient get secondaryGradient => purpleGradient;
+  static LinearGradient get successGradient   => greenGradient;
+  static LinearGradient get dangerGradient    => const LinearGradient(
+    colors: [Color(0xFFE74C3C), Color(0xFFC0392B)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );

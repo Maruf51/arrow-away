@@ -28,6 +28,7 @@ class ProgressRepository extends ChangeNotifier {
   bool _musicEnabled = true;
   bool _vibrationEnabled = true;
   ThemeMode _themeMode = ThemeMode.system;
+  bool _showFps = false;
 
   // 40x40 warning state
   bool _hasSeen40x40Warning = false;
@@ -38,8 +39,18 @@ class ProgressRepository extends ChangeNotifier {
   // Demo Mode
   bool _isDemoMode = false;
 
+  // Skins & Hints
+  String _equippedSkin = 'classic'; // 'classic' (white) or 'rainbow' (random colors)
+  int _hints = 3;
+
+  // Arrow exit speed: 0=Slow, 1=Normal, 2=Fast
+  int _arrowSpeedIndex = 1; // default Normal
+
   // ── Getters ──────────────────────────────────────────────────────────────────
   bool get isDemoMode => _isDemoMode;
+  String get equippedSkin => _equippedSkin;
+  int get hints => _hints;
+  int get arrowSpeedIndex => _arrowSpeedIndex;
   int get lives => _isDemoMode ? 999 : _lives;
   int get maxLives => AppConstants.maxLives;
   int get currentLevel => _currentLevel;
@@ -55,6 +66,7 @@ class ProgressRepository extends ChangeNotifier {
   bool get musicEnabled => _musicEnabled;
   bool get vibrationEnabled => _vibrationEnabled;
   ThemeMode get themeMode => _themeMode;
+  bool get showFps => _showFps;
   bool get hasSeen40x40Warning => _hasSeen40x40Warning;
   bool get hasSeenZoomHint => _hasSeenZoomHint;
 
@@ -94,6 +106,10 @@ class ProgressRepository extends ChangeNotifier {
       _vibrationEnabled = _prefs!.getBool('vibrationEnabled') ?? true;
       _hasSeen40x40Warning = _prefs!.getBool('hasSeen40x40Warning') ?? false;
       _hasSeenZoomHint = _prefs!.getBool('hasSeenZoomHint') ?? false;
+      _showFps = _prefs!.getBool('showFps') ?? false;
+      _equippedSkin = _prefs!.getString('equippedSkin') ?? 'classic';
+      _hints = _prefs!.getInt('hints') ?? 3;
+      _arrowSpeedIndex = _prefs!.getInt('arrowSpeedIndex') ?? 1;
 
       final themeStr = _prefs!.getString('themeMode') ?? 'system';
       _themeMode = ThemeMode.values.firstWhere(
@@ -139,6 +155,9 @@ class ProgressRepository extends ChangeNotifier {
         _prefs!.setInt('totalScore', _totalScore),
         _prefs!.setInt('coins', _coins),
         _prefs!.setInt('streakDays', _streakDays),
+        _prefs!.setString('equippedSkin', _equippedSkin),
+        _prefs!.setInt('hints', _hints),
+        _prefs!.setInt('arrowSpeedIndex', _arrowSpeedIndex),
         if (_lastPlayedDate != null)
           _prefs!.setString('lastPlayedDate', _lastPlayedDate!.toIso8601String()),
       ]);
@@ -255,6 +274,28 @@ class ProgressRepository extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setEquippedSkin(String skin) async {
+    _equippedSkin = skin;
+    await _save();
+    notifyListeners();
+  }
+
+  Future<void> addHints(int amount) async {
+    _hints += amount;
+    await _save();
+    notifyListeners();
+  }
+
+  bool useHint() {
+    if (_hints > 0) {
+      _hints--;
+      _save();
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
   // ── Settings Setters ─────────────────────────────────────────────────────────
 
   Future<void> setSoundEnabled(bool value) async {
@@ -283,6 +324,12 @@ class ProgressRepository extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setShowFps(bool value) async {
+    _showFps = value;
+    await _prefs?.setBool('showFps', value);
+    notifyListeners();
+  }
+
   Future<void> setHasSeen40x40Warning(bool value) async {
     _hasSeen40x40Warning = value;
     await _prefs?.setBool('hasSeen40x40Warning', value);
@@ -292,6 +339,12 @@ class ProgressRepository extends ChangeNotifier {
   Future<void> setHasSeenZoomHint(bool value) async {
     _hasSeenZoomHint = value;
     await _prefs?.setBool('hasSeenZoomHint', value);
+    notifyListeners();
+  }
+
+  Future<void> setArrowSpeedIndex(int value) async {
+    _arrowSpeedIndex = value.clamp(0, 2);
+    await _prefs?.setInt('arrowSpeedIndex', _arrowSpeedIndex);
     notifyListeners();
   }
 

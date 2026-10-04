@@ -2,6 +2,7 @@ import 'package:flame/components.dart';
 import 'package:flame/effects.dart';
 import 'package:flame/events.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/constants.dart';
 import '../../core/app_colors.dart';
@@ -161,7 +162,16 @@ class ArrowComponent extends PositionComponent with TapCallbacks, HasPaint {
   // ── Exit: head-first pull-through ────────────────────────────────────────
 
   void _startExitAnimation() {
-    _exitDuration = 0.4 + arrowModel.path.length * 0.08;
+    if (gameState.vibrationEnabled) {
+      HapticFeedback.lightImpact();
+    }
+    double speedMultiplier = 1.0;
+    if (gameState.arrowSpeedIndex == 0) {
+      speedMultiplier = 1.6; // Slow
+    } else if (gameState.arrowSpeedIndex == 2) {
+      speedMultiplier = 0.55; // Fast
+    }
+    _exitDuration = (0.4 + arrowModel.path.length * 0.08) * speedMultiplier;
     _exitProgress = 0.0;
     _isExiting = true;
     _deflectedExtension = _buildDeflectedExtension();
@@ -294,6 +304,9 @@ class ArrowComponent extends PositionComponent with TapCallbacks, HasPaint {
   }
 
   void _playBlockAnimation() {
+    if (gameState.vibrationEnabled) {
+      HapticFeedback.mediumImpact();
+    }
     _invalidateCache();
 
     if (_cachedPathPx == null) {
@@ -324,6 +337,9 @@ class ArrowComponent extends PositionComponent with TapCallbacks, HasPaint {
   // ── ColorLock: lateral rattle ─────────────────────────────────────────────
 
   void _playLockedAnimation() {
+    if (gameState.vibrationEnabled) {
+      HapticFeedback.mediumImpact();
+    }
     final ox = position.x, oy = position.y;
     add(SequenceEffect([
       MoveEffect.to(Vector2(ox + 4, oy), EffectController(duration: 0.06)),
@@ -723,12 +739,27 @@ class ArrowComponent extends PositionComponent with TapCallbacks, HasPaint {
 
   // ── Color resolution ──────────────────────────────────────────────────────────────
 
+  static const List<Color> _rainbowColors = [
+    Color(0xFFFF334B), // Vivid Red
+    Color(0xFFFF7A00), // Vibrant Orange
+    Color(0xFFFFD000), // Bright Yellow
+    Color(0xFF00E676), // Electric Green
+    Color(0xFF00E5FF), // Bright Cyan
+    Color(0xFF2979FF), // Electric Blue
+    Color(0xFFA855F7), // Royal Purple
+    Color(0xFFFF2A8D), // Hot Pink
+  ];
+
   Color _color() {
     if (arrowModel.state == ArrowState.blocked || _isBlockedAnimating) {
       return const Color(0xFFCC2200); // Vibrant red error color on block
     }
     if (arrowModel.colorGroup != null) {
       return AppColors.getGroupColor(arrowModel.colorGroup!);
+    }
+    if (gameState.arrowSkin == 'rainbow') {
+      final seed = arrowModel.row * 7 + arrowModel.col * 13 + arrowModel.id.hashCode.abs();
+      return _rainbowColors[seed % _rainbowColors.length];
     }
     return AppColors.arrowUp;
   }
