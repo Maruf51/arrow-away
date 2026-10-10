@@ -100,7 +100,18 @@ class _SettingsDialogState extends State<SettingsDialog> {
                             ),
                             const SizedBox(height: 10),
 
-                            // 2. Haptic Feedback
+                            // 2. Music
+                            _SettingToggleCard(
+                              label: 'Music',
+                              value: progress.musicEnabled,
+                              onChanged: (val) {
+                                AudioManager.instance.playClick();
+                                progress.setMusicEnabled(val);
+                              },
+                            ),
+                            const SizedBox(height: 10),
+
+                            // 3. Haptic Feedback
                             _SettingToggleCard(
                               label: 'Haptic Feedback',
                               value: progress.vibrationEnabled,
@@ -111,7 +122,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                             ),
                             const SizedBox(height: 10),
 
-                            // 3. Grid Background Dots
+                            // 4. Grid Background Dots
                             _SettingToggleCard(
                               label: 'Grid Background Dots',
                               value: _gridDots,
@@ -122,7 +133,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                             ),
                             const SizedBox(height: 10),
 
-                            // 4. Start Arrow Animation
+                            // 5. Start Arrow Animation
                             _SettingToggleCard(
                               label: 'Start Arrow Animation',
                               value: _startArrowAnimation,
@@ -133,7 +144,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                             ),
                             const SizedBox(height: 10),
 
-                            // 5. Show Framerate (FPS)
+                            // 6. Show Framerate (FPS)
                             _SettingToggleCard(
                               label: 'Show Framerate (FPS)',
                               value: progress.showFps,
@@ -144,11 +155,11 @@ class _SettingsDialogState extends State<SettingsDialog> {
                             ),
                             const SizedBox(height: 10),
 
-                            // 6. Arrow Exit Speed Section
+                            // 7. Arrow Exit Speed Section
                             _buildArrowExitSpeedCard(progress),
                             const SizedBox(height: 10),
 
-                            // 7. How to Play Button
+                            // 8. How to Play Button
                             _buildActionCard(
                               icon: Icons.help_outline_rounded,
                               label: 'How to Play',
@@ -163,7 +174,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                             ),
                             const SizedBox(height: 10),
 
-                            // 8. Terms & Privacy Policy Button
+                            // 9. Terms & Privacy Policy Button
                             _buildActionCard(
                               icon: Icons.shield_outlined,
                               label: 'Terms & Privacy Policy',
@@ -174,7 +185,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                             ),
                             const SizedBox(height: 10),
 
-                            // 9. Reset Progress Button
+                            // 10. Reset Progress Button
                             _buildResetProgressCard(context, progress),
                           ],
                         ),
@@ -261,12 +272,15 @@ class _SettingsDialogState extends State<SettingsDialog> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Arrow Exit Speed',
-                style: GoogleFonts.nunito(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF2C194D),
+              Flexible(
+                child: Text(
+                  'Arrow Exit Speed',
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.nunito(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF2C194D),
+                  ),
                 ),
               ),
               Text(
@@ -365,12 +379,15 @@ class _SettingsDialogState extends State<SettingsDialog> {
               child: Icon(icon, color: const Color(0xFF7E38E6), size: 18),
             ),
             const SizedBox(width: 12),
-            Text(
-              label,
-              style: GoogleFonts.nunito(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF2C194D),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF2C194D),
+                ),
               ),
             ),
           ],
@@ -494,12 +511,18 @@ class _SettingToggleCard extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: GoogleFonts.nunito(
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF2C194D),
+          // Flexible + ellipsis: wide fallback fonts (widget tests) or large
+          // text scales can make the label wider than the card — shrink it
+          // instead of overflowing the row.
+          Flexible(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.nunito(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF2C194D),
+              ),
             ),
           ),
           Switch(

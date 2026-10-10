@@ -71,156 +71,158 @@ class _ShopDialogState extends State<ShopDialog> {
                   ],
                 ),
                 padding: const EdgeInsets.fromLTRB(16, 36, 16, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Top Status Pill (Lives, Coins, Hints)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFFDF8),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: const Color(0xFFEBE0CC),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        // Lives
-                        Row(
-                          children: [
-                            const Text('❤️', style: TextStyle(fontSize: 13)),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${progress.lives}/${progress.maxLives}',
-                              style: GoogleFonts.nunito(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w900,
-                                color: const Color(0xFF2C194D),
-                              ),
-                            ),
-                          ],
-                        ),
-                        // Coins
-                        Row(
-                          children: [
-                            const Text('🪙', style: TextStyle(fontSize: 14)),
-                            const SizedBox(width: 4),
-                            Text(
-                              _formatNumber(progress.coins),
-                              style: GoogleFonts.nunito(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w900,
-                                color: const Color(0xFF2C194D),
-                              ),
-                            ),
-                          ],
-                        ),
-                        // Hints
-                        Row(
-                          children: [
-                            const Text('💡', style: TextStyle(fontSize: 13)),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${progress.hints} Hints',
-                              style: GoogleFonts.nunito(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w900,
-                                color: const Color(0xFF2C194D),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // 3 Tabs (SKINS, COINS, 💡 & ❤️)
-                  Row(
-                    children: [
-                      _buildTab(0, '🏹 SKINS'),
-                      const SizedBox(width: 6),
-                      _buildTab(1, '🪙 COINS'),
-                      const SizedBox(width: 6),
-                      _buildTab(2, '💡 & ❤️'),
-                    ],
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  // Content based on selected tab
-                  Flexible(
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      child: _selectedTab == 0
-                          ? _buildSkinsTab(context, progress)
-                          : _selectedTab == 1
-                              ? _buildCoinsTab(context, progress)
-                              : _buildHintsLivesTab(context, progress),
-                    ),
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  // Bottom CLOSE Button
-                  GestureDetector(
-                    onTap: () {
-                      AudioManager.instance.playClick();
-                      Navigator.pop(context);
-                    },
-                    child: Container(
-                      height: 52,
-                      width: double.infinity,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Top Status Pill (Lives, Coins, Hints)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF9E54FF), Color(0xFF7020CA)],
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
+                        color: const Color(0xFFFFFDF8),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFFEBE0CC),
+                          width: 1.5,
                         ),
-                        borderRadius: BorderRadius.circular(26),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF7020CA).withValues(alpha: 0.5),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          // Lives
+                          Row(
+                            children: [
+                              const Text('❤️', style: TextStyle(fontSize: 13)),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${progress.lives}/${progress.maxLives}',
+                                style: GoogleFonts.nunito(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w900,
+                                  color: const Color(0xFF2C194D),
+                                ),
+                              ),
+                            ],
+                          ),
+                          // Coins
+                          Row(
+                            children: [
+                              const Text('🪙', style: TextStyle(fontSize: 14)),
+                              const SizedBox(width: 4),
+                              Text(
+                                _formatNumber(progress.coins),
+                                style: GoogleFonts.nunito(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w900,
+                                  color: const Color(0xFF2C194D),
+                                ),
+                              ),
+                            ],
+                          ),
+                          // Hints
+                          Row(
+                            children: [
+                              const Text('💡', style: TextStyle(fontSize: 13)),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${progress.hints} Hints',
+                                style: GoogleFonts.nunito(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w900,
+                                  color: const Color(0xFF2C194D),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        'CLOSE',
-                        style: GoogleFonts.nunito(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: 2,
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // 3 Tabs (SKINS, COINS, 💡 & ❤️)
+                    Row(
+                      children: [
+                        _buildTab(0, '🏹 SKINS'),
+                        const SizedBox(width: 6),
+                        _buildTab(1, '🪙 COINS'),
+                        const SizedBox(width: 6),
+                        _buildTab(2, '💡 & ❤️'),
+                      ],
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Content based on selected tab
+                    Flexible(
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        child: _selectedTab == 0
+                            ? _buildSkinsTab(context, progress)
+                            : _selectedTab == 1
+                                ? _buildCoinsTab(context, progress)
+                                : _buildHintsLivesTab(context, progress),
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Bottom CLOSE Button
+                    GestureDetector(
+                      onTap: () {
+                        AudioManager.instance.playClick();
+                        Navigator.pop(context);
+                      },
+                      child: Container(
+                        height: 52,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF9E54FF), Color(0xFF7020CA)],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ),
+                          borderRadius: BorderRadius.circular(26),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF7020CA)
+                                  .withValues(alpha: 0.5),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          'CLOSE',
+                          style: GoogleFonts.nunito(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: 2,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
 
-          // Top Ribbon Header overlapping the card
-          const Positioned(
-            top: 0,
-            child: RibbonHeader(
-              title: 'SHOP',
-              bannerWidth: 240,
-              height: 44,
-              fontSize: 18,
+            // Top Ribbon Header overlapping the card
+            const Positioned(
+              top: 0,
+              child: RibbonHeader(
+                title: 'SHOP',
+                bannerWidth: 240,
+                height: 44,
+                fontSize: 18,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
   }
 
   Widget _buildTab(int index, String label) {
@@ -327,7 +329,8 @@ class _ShopDialogState extends State<ShopDialog> {
           isActive: currentSkin == 'rainbow',
           trailText: 'Trail: Color Spectrum',
           trailColor: const Color(0xFF00BFA5),
-          description: 'Vibrant spectrum of rainbow colors illuminating every arrow on the board.',
+          description:
+              'Vibrant spectrum of rainbow colors illuminating every arrow on the board.',
           iconWidget: Container(
             width: 44,
             height: 44,
@@ -373,6 +376,25 @@ class _ShopDialogState extends State<ShopDialog> {
               : () {
                   AudioManager.instance.playClick();
                   progress.setEquippedSkin('rainbow');
+                },
+        ),
+
+        const SizedBox(height: 12),
+
+        // 3. Neon Flow (Red liquid tube)
+        _buildSkinCard(
+          title: 'Neon Flow',
+          isActive: currentSkin == 'liquid_neon',
+          trailText: 'Trail: Liquid Halo',
+          trailColor: const Color(0xFFFF1744),
+          description:
+              'Red neon arrows with slow white liquid flowing from tail to head.',
+          iconWidget: const _LiquidNeonSkinIcon(),
+          onEquipTap: currentSkin == 'liquid_neon'
+              ? null
+              : () {
+                  AudioManager.instance.playClick();
+                  progress.setEquippedSkin('liquid_neon');
                 },
         ),
       ],
@@ -432,7 +454,8 @@ class _ShopDialogState extends State<ShopDialog> {
                     if (isActive) ...[
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
                         decoration: BoxDecoration(
                           color: const Color(0xFF00C853),
                           borderRadius: BorderRadius.circular(6),
@@ -576,7 +599,8 @@ class _ShopDialogState extends State<ShopDialog> {
     );
   }
 
-  Widget _buildHintsLivesTab(BuildContext context, ProgressRepository progress) {
+  Widget _buildHintsLivesTab(
+      BuildContext context, ProgressRepository progress) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -738,4 +762,102 @@ class _ShopDialogState extends State<ShopDialog> {
       ),
     );
   }
+}
+
+class _LiquidNeonSkinIcon extends StatelessWidget {
+  const _LiquidNeonSkinIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFF2A0610),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFF1744).withValues(alpha: 0.35),
+            blurRadius: 10,
+          ),
+        ],
+      ),
+      child: const CustomPaint(
+        painter: _LiquidNeonSkinIconPainter(),
+      ),
+    );
+  }
+}
+
+class _LiquidNeonSkinIconPainter extends CustomPainter {
+  const _LiquidNeonSkinIconPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final centerY = size.height / 2;
+    final start = Offset(size.width * 0.20, centerY);
+    final end = Offset(size.width * 0.76, centerY);
+    final path = Path()
+      ..moveTo(start.dx, start.dy)
+      ..lineTo(end.dx, end.dy);
+
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = const Color(0xFFFF1744).withValues(alpha: 0.40)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 14
+        ..strokeCap = StrokeCap.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = const Color(0xFFFF1638)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 10
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = const Color(0xFF8F001B)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5
+        ..strokeCap = StrokeCap.round,
+    );
+
+    final head = Path()
+      ..moveTo(size.width * 0.80, centerY)
+      ..lineTo(size.width * 0.58, size.height * 0.30)
+      ..lineTo(size.width * 0.58, size.height * 0.70)
+      ..close();
+    canvas.drawPath(
+      head,
+      Paint()
+        ..color = const Color(0xFFFF1638)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawPath(
+      head,
+      Paint()
+        ..color = const Color(0xFF650013)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0
+        ..strokeJoin = StrokeJoin.round,
+    );
+
+    canvas.drawLine(
+      Offset(size.width * 0.29, centerY),
+      Offset(size.width * 0.55, centerY),
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

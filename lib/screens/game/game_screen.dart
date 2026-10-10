@@ -1009,13 +1009,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       final args =
           ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
       final levelNum = args?['level'] as int? ?? 1;
-      return _LevelLoadingScreen(levelNumber: levelNum);
+      return _withExitGuard(_LevelLoadingScreen(levelNumber: levelNum));
     }
 
     final levelType = AppConstants.levelTypeFor(_level.levelNumber);
 
 
-    return Scaffold(
+    final Widget screen = Scaffold(
       body: Container(
         decoration: BoxDecoration(gradient: AppColors.bgGradient),
         child: SafeArea(
@@ -1168,9 +1168,42 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
             )
           : null,
     );
+    return _withExitGuard(screen);
   }
 
   bool get _isLevelReady => _gameState != null;
+
+  /// Blocks the system back gesture/button while a level is open: without
+  /// this, back popped straight out of the level and dropped the player on
+  /// the main menu with no warning (and lost all in-level progress). The
+  /// same confirmation dialog the in-level Quit button uses is shown first.
+  Widget _withExitGuard(Widget child) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        // didPop == true means we popped the route ourselves (e.g. the player
+        // confirmed the exit) — nothing left to guard.
+        if (didPop) return;
+        _confirmExitToMenu();
+      },
+      child: child,
+    );
+  }
+
+  bool _isAskingExit = false; // guards against stacked back-press dialogs
+
+  Future<void> _confirmExitToMenu() async {
+    if (_isAskingExit) return; // a confirmation is already on screen
+    _isAskingExit = true;
+    try {
+      final shouldExit = await _showExitConfirmDialog();
+      if (shouldExit && mounted) {
+        _handleMenu();
+      }
+    } finally {
+      _isAskingExit = false;
+    }
+  }
 
   void _showTutorialDialogIfNeeded(int levelNum) {
     if (levelNum == 1) {

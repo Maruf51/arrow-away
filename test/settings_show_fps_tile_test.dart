@@ -32,13 +32,22 @@ void main() {
     await tester.pump();
 
     // Tile is visible in the settings menu.
-    expect(find.text('Show FPS'), findsOneWidget);
+    expect(find.text('Show Framerate (FPS)'), findsOneWidget);
 
     // Defaults to off.
     expect(progress.showFps, isFalse);
 
-    // Show FPS is the 4th Switch on screen (Sound, Music, Vibration, FPS).
-    final fpsSwitch = find.byType(Switch).last;
+    // The FPS switch: the Switch inside the 'Show Framerate (FPS)' card.
+    // (Resolved by card instead of index so neighbouring toggles — e.g. the
+    // Music toggle — can't shift the wrong switch into focus.)
+    final fpsCard = find.ancestor(
+      of: find.text('Show Framerate (FPS)'),
+      matching: find.byType(Row),
+    );
+    final fpsSwitch = find.descendant(
+      of: fpsCard.first,
+      matching: find.byType(Switch),
+    );
 
     // Toggle ON → state + persistence updated.
     await tester.tap(fpsSwitch);

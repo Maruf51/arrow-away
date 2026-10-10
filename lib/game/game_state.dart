@@ -30,6 +30,11 @@ class GameState extends ChangeNotifier {
   final void Function() onGameOver;
   final void Function() onLifeLost;
   final void Function() onDeadlock;
+
+  /// Set by GridComponent — fired by ArrowComponent for every body cell at
+  /// the moment the exiting tail vacates it, so that one grid dot plays its
+  /// brief "release" pop (a wave running along the escaping arrow).
+  void Function(int row, int col)? onCellPopRequested;
   final String arrowSkin;
   final int arrowSpeedIndex;
   final bool vibrationEnabled;

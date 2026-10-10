@@ -535,19 +535,30 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // 1. Speaker/Sound
+          // 1. Speaker/Sound — MASTER audio toggle: one tap mutes (and
+          //    resumes) both the sound effects and the background music.
           _PurpleCircleIconButton(
-            icon: progress.soundEnabled
+            icon: (progress.soundEnabled || progress.musicEnabled)
                 ? Icons.volume_up_rounded
                 : Icons.volume_off_rounded,
             size: 48,
             iconSize: 22,
             onTap: () {
-              AudioManager.instance.playClick();
-              progress.setSoundEnabled(!progress.soundEnabled);
+              final audioOn = progress.soundEnabled || progress.musicEnabled;
+              if (audioOn) {
+                // Muting: let this click be heard, then shut everything off.
+                AudioManager.instance.playClick();
+                progress.setSoundEnabled(false);
+                progress.setMusicEnabled(false); // stops the bgm immediately
+              } else {
+                // Unmuting: restore both first so the confirmation click plays.
+                progress.setSoundEnabled(true);
+                progress.setMusicEnabled(true); // resumes the bgm
+                AudioManager.instance.playClick();
+              }
             },
           ),
-          // 2. Vibration/Haptic
+          // 2. Vibration/Haptic (no Material "off" glyph exists for this one)
           _PurpleCircleIconButton(
             icon: Icons.vibration_rounded,
             size: 48,

@@ -40,7 +40,7 @@ class ProgressRepository extends ChangeNotifier {
   bool _isDemoMode = false;
 
   // Skins & Hints
-  String _equippedSkin = 'classic'; // 'classic' (white) or 'rainbow' (random colors)
+  String _equippedSkin = 'classic'; // 'classic', 'rainbow', or 'liquid_neon'
   int _hints = 3;
 
   // Arrow exit speed: 0=Slow, 1=Normal, 2=Fast
@@ -87,7 +87,6 @@ class ProgressRepository extends ChangeNotifier {
   ProgressRepository([this._prefs]) {
     _load();
   }
-
 
   // ── Load / Save ──────────────────────────────────────────────────────────────
 
@@ -159,7 +158,8 @@ class ProgressRepository extends ChangeNotifier {
         _prefs!.setInt('hints', _hints),
         _prefs!.setInt('arrowSpeedIndex', _arrowSpeedIndex),
         if (_lastPlayedDate != null)
-          _prefs!.setString('lastPlayedDate', _lastPlayedDate!.toIso8601String()),
+          _prefs!
+              .setString('lastPlayedDate', _lastPlayedDate!.toIso8601String()),
       ]);
     } catch (e) {
       debugPrint('Error saving progress: $e');
