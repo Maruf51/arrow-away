@@ -70,6 +70,12 @@ class _GameScreenState extends State<GameScreen>
   Size? _gameViewportSize;
   int? _autoZoomScheduledLevel;
 
+  // Throttle for pushing the visible scene rect into the game while a gesture
+  // or auto-zoom animation is running (it loops over every arrow component).
+  final Stopwatch _viewportClock = Stopwatch()..start();
+  int _lastViewportPushMs = -1000;
+  static const int _kViewportPushIntervalMs = 100;
+
   @override
   void initState() {
     super.initState();
@@ -86,7 +92,19 @@ class _GameScreenState extends State<GameScreen>
         _transformationController.value = animation.value;
         final viewportSize = _gameViewportSize;
         if (viewportSize != null) {
-          _updateExitViewportSceneRect(viewportSize);
+          _updateExitViewportSceneRect(viewportSize, throttle: true);
+        }
+      })
+      ..addStatusListener((status) {
+        if (!_isLevelReady) return;
+        if (status == AnimationStatus.forward) {
+          // Auto-zoom is a zoom like any other: freeze the engine while it runs.
+          _game.setGestureFrozen(true);
+        } else if (status == AnimationStatus.completed ||
+            status == AnimationStatus.dismissed) {
+          _game.setGestureFrozen(false);
+          final viewportSize = _gameViewportSize;
+          if (viewportSize != null) _updateExitViewportSceneRect(viewportSize);
         }
       });
   }
@@ -272,8 +290,14 @@ class _GameScreenState extends State<GameScreen>
     _resetTimerForLevel();
   }
 
-  void _updateExitViewportSceneRect(Size viewportSize) {
+  void _updateExitViewportSceneRect(Size viewportSize,
+      {bool throttle = false}) {
     if (!_isLevelReady) return;
+    if (throttle) {
+      final now = _viewportClock.elapsedMilliseconds;
+      if (now - _lastViewportPushMs < _kViewportPushIntervalMs) return;
+      _lastViewportPushMs = now;
+    }
     final sceneTopLeft =
         _transformationController.toScene(Offset.zero);
     final sceneBottomRight = _transformationController.toScene(
@@ -1441,12 +1465,21 @@ class _GameScreenState extends State<GameScreen>
                               maxScale: 4.0,
                               boundaryMargin: const EdgeInsets.all(180),
                               clipBehavior: Clip.none,
-                                onInteractionStart: (_) =>
-                                  _cancelAutoZoomForUserGesture(),
+                                onInteractionStart: (_) {
+                                  _cancelAutoZoomForUserGesture();
+                                  if (_isLevelReady) {
+                                    _game.setGestureFrozen(true);
+                                  }
+                                },
                                 onInteractionUpdate: (_) =>
-                                  _updateExitViewportSceneRect(viewportSize),
-                                onInteractionEnd: (_) =>
-                                  _updateExitViewportSceneRect(viewportSize),
+                                  _updateExitViewportSceneRect(viewportSize,
+                                      throttle: true),
+                                onInteractionEnd: (_) {
+                                  _updateExitViewportSceneRect(viewportSize);
+                                  if (_isLevelReady) {
+                                    _game.setGestureFrozen(false);
+                                  }
+                                },
                               child: Center(
                                 child: SizedBox(
                                   width: boardW,

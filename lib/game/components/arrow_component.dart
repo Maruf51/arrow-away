@@ -13,6 +13,21 @@ import '../../data/models/level.dart';
 import '../game_state.dart';
 import '../../ui/renderer/PairVisuals.dart';
 
+// ── Pair glyph unit shapes ───────────────────────────────────────────────────
+// Built once at radius 1 and scaled when drawn, so the per-frame tail marker
+// allocates no Path objects.
+final Path _kGlyphTriangle = Path()
+  ..moveTo(0, -1)
+  ..lineTo(0.9, 0.7)
+  ..lineTo(-0.9, 0.7)
+  ..close();
+final Path _kGlyphDiamond = Path()
+  ..moveTo(0, -1)
+  ..lineTo(1, 0)
+  ..lineTo(0, 1)
+  ..lineTo(-1, 0)
+  ..close();
+
 /// One flowing neon-flow liquid segment.
 ///
 /// Stored as a NORMALISED arc-length fraction (0.0–1.0) of the body rather
@@ -54,7 +69,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
   double _maxBlockSlide = 0.0;
   double _slideOffset = 0.0;
 
-  // ── Long-press preview ─────────────────────────────────────────────────────────────
+  // ── Long-press preview ───────────────────────────────────────────────────
   static const double _kLongPressThreshold = 0.30; // 300 ms
   double _longPressAccum = 0.0;
   bool _isTouchDown = false;
@@ -65,7 +80,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
   double _hintRemaining = 0.0;
   final Paint _hintPaint = Paint()..style = PaintingStyle.stroke;
 
-  // ── Exit state ──────────────────────────────────────────────────────────────────
+  // ── Exit state ────────────────────────────────────────────────────────────
   bool _isExiting = false;
   double _exitProgress = 0.0;
   double _exitDuration = 0.35;
@@ -116,6 +131,15 @@ class ArrowComponent extends PositionComponent with HasPaint {
   final Paint _paintLiquid = Paint(); // fluid core (white)
   final Paint _paintInnerHead = Paint(); // white triangle inside the head
 
+  // ── Hoisted color-lock pair marker paints ────────────────────────────────
+  // Reused across every arrow every frame; only .color is mutated.
+  final Paint _paintRingWhite = Paint()..style = PaintingStyle.fill;
+  final Paint _paintGlyphFill = Paint()..style = PaintingStyle.fill;
+  final Paint _paintGlyphStroke = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round
+    ..strokeJoin = StrokeJoin.round;
+
   /// Deterministically generated once per arrow; see [_buildLiquidSegs].
   List<_LiquidSeg>? _cachedLiquidSegs;
 
@@ -149,7 +173,8 @@ class ArrowComponent extends PositionComponent with HasPaint {
     return true;
   }
 
-  // Group colors for colorLock / colorKey pairs are retrieved dynamically from AppColors.getGroupColor
+  // Group colors for colorLock / colorKey pairs are retrieved dynamically
+  // from AppColors.getGroupColor.
 
   ArrowComponent({
     required this.arrowModel,
@@ -509,7 +534,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
     return cellsToClearBoard + 1;
   }
 
-  // ── Block: direction-aware shake ──────────────────────────────────────────
+  // ── Block: direction-aware shake ─────────────────────────────────────────
 
   List<Offset> _buildBlockedExtension() {
     ArrowDirection currentDir = arrowModel.direction;
@@ -606,7 +631,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
     _isBlockedAnimating = true;
   }
 
-  // ── ColorLock: lateral rattle ─────────────────────────────────────────────
+  // ── ColorLock: lateral rattle ────────────────────────────────────────────
 
   void _playLockedAnimation() {
     if (gameState.vibrationEnabled) {
@@ -629,7 +654,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
     super.update(dt);
     _hintRemaining = (_hintRemaining - dt).clamp(0.0, 3.2);
 
-    // ── Long-press accumulator ──────────────────────────────────────────────
+    // ── Long-press accumulator ────────────────────────────────────────────
     if (_isTouchDown && !_isAnimating && !_isExiting) {
       _longPressAccum += dt;
       if (!_isPreviewMode && _longPressAccum >= _kLongPressThreshold) {
@@ -653,7 +678,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
         return;
       }
 
-      // ── Release wave: pop each grid dot as the tail vacates its cell ─────
+      // ── Release wave: pop each grid dot as the tail vacates its cell ───
       // Thresholds are stored in FIRING order (strictly ascending, tail cell
       // first / head cell last) and paired with _popCells, so a single
       // forward cursor pops exactly one dot per crossing — a wave running
@@ -721,7 +746,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
   void render(Canvas canvas) {
     if (arrowModel.path.isEmpty) return;
 
-    // ── 1. Resolve pathPx ─────────────────────────────────────────────────────
+    // ── 1. Resolve pathPx ─────────────────────────────────────────────────
     if (_cachedPathPx == null) {
       _cachedPathPx = arrowModel.path
           .map((pt) =>
@@ -734,7 +759,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
     final bool isAnimatingNow = _isExiting || _isBlockedAnimating;
 
     if (isAnimatingNow) {
-      // ── 2. Build or retrieve the extended track for exit animation ───
+      // ── 2. Build or retrieve the extended track for exit animation ─────
       if (_cachedTrack == null) {
         final delta = arrowModel.direction.delta;
         final headPx = pathPx.first;
@@ -754,7 +779,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
         track.addAll(pathPx);
         _cachedTrack = track;
 
-        // ── 3. Cumulative distances along the track ─────────────────────────────────────
+        // ── 3. Cumulative distances along the track ─────────────────────
         final dist = <double>[0.0];
         for (int i = 1; i < track.length; i++) {
           dist.add(dist[i - 1] + (track[i] - track[i - 1]).distance);
@@ -769,7 +794,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
       final headDist = _cachedHeadDist!;
       final tailDist = _cachedTailDist!;
 
-      // ── 4. Compute animated head/tail positions ─────────────────────────────────────
+      // ── 4. Compute animated head/tail positions ──────────────────────
       final double animHead, animTail;
       if (_isExiting) {
         final traveled = (_exitProgress * tailDist).clamp(0.0, tailDist);
@@ -808,7 +833,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
 
     if (pts.isEmpty) return;
 
-    // ── 5. Resolve color and stroke width ─────────────────────────────────────────────
+    // ── 5. Resolve color and stroke width ───────────────────────────────
     final mainColor = _color();
     final sw = cellSize * (_usesLiquidNeonSkin ? 0.44 : 0.30);
 
@@ -827,7 +852,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
       );
     }
 
-    // ── 6. Draw body ──────────────────────────────────────────────────────
+    // ── 6. Draw body ─────────────────────────────────────────────────────
     final Path bodyPath;
     if (isAnimatingNow) {
       bodyPath = Path()..moveTo(pts.first.dx, pts.first.dy);
@@ -850,11 +875,11 @@ class ArrowComponent extends PositionComponent with HasPaint {
         ..strokeWidth = sw;
       canvas.drawPath(bodyPath, _paintBodyClassic);
 
-      // ── 7. Draw arrowhead at the head end (pts.first) ──────────────────────────────
+      // ── 7. Draw arrowhead at the head end (pts.first) ──────────────
       _drawHead(canvas, pts, mainColor, sw);
     }
 
-    // ── 8. Long-press preview overlay ────────────────────────────────────────────
+    // ── 8. Long-press preview overlay ───────────────────────────────────
     if (_isPreviewMode) {
       final preview = _previewPath;
       if (preview != null && preview.length >= 2) {
@@ -884,64 +909,71 @@ class ArrowComponent extends PositionComponent with HasPaint {
     _paintCaretFillClassic.color = mainColor;
     canvas.drawPath(caretPath, _paintCaretFillClassic);
 
-    // ── Color Lock Partner Ring Indicator at Tail Node ─────────────────────
+    // ── Color Lock Partner Marker at Tail Node ───────────────────────────
+    // (color, glyph) identifies the pair: 12 colors x 3 glyphs = 36 distinct
+    // pairs, so no two pairs on a level look the same.
+    final groupId = arrowModel.colorGroup;
     if (arrowModel.mechanic == SnakeMechanic.colorLock &&
-        arrowModel.colorGroup != null &&
+        groupId != null &&
         pts.isNotEmpty) {
       final tailPx = pts.last;
-      final visual = PairVisuals.resolve(arrowModel.colorGroup!);
+      final visual = PairVisuals.resolve(groupId);
       final badgeRadius = sw * 0.90;
+
+      // White badge behind the glyph.
       canvas.drawCircle(
         tailPx,
         badgeRadius,
-        Paint()
-          ..color = Colors.white
-          ..style = PaintingStyle.fill,
+        _paintRingWhite..color = Colors.white,
       );
-      _drawPairGlyph(canvas, tailPx, badgeRadius, visual.glyph, visual.color);
+      _drawPairGlyph(canvas, tailPx, badgeRadius, visual.color, visual.glyph);
     }
   }
 
+  /// Draws a pair glyph inscribed in a badge of radius [r]. Uses hoisted
+  /// paints and unit-scale paths, so nothing is allocated per frame.
   void _drawPairGlyph(
-    Canvas canvas,
-    Offset center,
-    double r,
-    PairGlyph glyph,
-    Color color,
-  ) {
-    final stroke = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = r * 0.42
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    final fill = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-
+      Canvas canvas, Offset center, double r, Color color, PairGlyph glyph) {
+    // Inscribed radius for the glyph itself (small margin inside the badge).
     final g = r * 0.62;
     switch (glyph) {
       case PairGlyph.ring:
-        canvas.drawCircle(center, g * 0.85, stroke);
+        canvas.drawCircle(
+          center,
+          g * 0.85,
+          _paintGlyphStroke
+            ..color = color
+            ..strokeWidth = r * 0.38,
+        );
         break;
       case PairGlyph.triangle:
-        final path = Path()
-          ..moveTo(center.dx, center.dy - g * 1.00)
-          ..lineTo(center.dx + g * 0.95, center.dy + g * 0.70)
-          ..lineTo(center.dx - g * 0.95, center.dy + g * 0.70)
-          ..close();
-        canvas.drawPath(path, fill);
+        _drawUnitGlyph(
+          canvas,
+          _kGlyphTriangle,
+          center,
+          g,
+          _paintGlyphFill..color = color,
+        );
         break;
       case PairGlyph.diamond:
-        final path = Path()
-          ..moveTo(center.dx, center.dy - g * 1.05)
-          ..lineTo(center.dx + g * 1.05, center.dy)
-          ..lineTo(center.dx, center.dy + g * 1.05)
-          ..lineTo(center.dx - g * 1.05, center.dy)
-          ..close();
-        canvas.drawPath(path, fill);
+        _drawUnitGlyph(
+          canvas,
+          _kGlyphDiamond,
+          center,
+          g,
+          _paintGlyphFill..color = color,
+        );
         break;
     }
+  }
+
+  void _drawUnitGlyph(
+      Canvas canvas, Path unit, Offset center, double scale, Paint paint) {
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.scale(scale);
+    canvas.drawPath(unit, paint);
+    canvas.restore();
   }
 
   Path _buildCaretPath(List<Offset> pts, double sw,
@@ -1258,28 +1290,29 @@ class ArrowComponent extends PositionComponent with HasPaint {
   }
 
   void _drawLiquidColorLockRing(Canvas canvas, List<Offset> pts, double sw) {
+    final groupId = arrowModel.colorGroup;
     if (arrowModel.mechanic != SnakeMechanic.colorLock ||
-        arrowModel.colorGroup == null ||
+        groupId == null ||
         pts.isEmpty) {
       return;
     }
 
     final tailPx = pts.last;
-    final visual = PairVisuals.resolve(arrowModel.colorGroup!);
-    final badgeRadius = sw * 0.90;
-    // Colour-lock indicator. Only drawn on colorLock levels, so it is outside
-    // the 5-call steady-state budget above.
+    final visual = PairVisuals.resolve(groupId);
+    // Same (color, glyph) identity as the classic skin. The neon body stroke
+    // is thicker (sw = 0.44 cell vs 0.30), so the badge scales with sw to
+    // keep the same on-screen size. Only drawn on colorLock levels, so it is
+    // outside the 5-call steady-state budget above.
+    final double badge = sw * 0.90;
     canvas.drawCircle(
       tailPx,
-      badgeRadius,
-      Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.fill,
+      badge,
+      _paintRingWhite..color = Colors.white.withValues(alpha: 0.95),
     );
-    _drawPairGlyph(canvas, tailPx, badgeRadius, visual.glyph, visual.color);
+    _drawPairGlyph(canvas, tailPx, badge, visual.color, visual.glyph);
   }
 
-  // ── Long-press preview path builder & renderer ──────────────────────────────
+  // ── Long-press preview path builder & renderer ──────────────────────────
 
   /// Computes the pixel-space exit path from the arrow head outward,
   /// following direction-changing orphan dots, until the arrow would
@@ -1385,7 +1418,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
     );
   }
 
-  // ── Color resolution ──────────────────────────────────────────────────────────────
+  // ── Color resolution ────────────────────────────────────────────────────
 
   static const List<Color> _rainbowColors = [
     Color(0xFFFF334B), // Vivid Red
@@ -1526,7 +1559,8 @@ class ArrowComponent extends PositionComponent with HasPaint {
 
       canvas.restore();
     } else {
-      // Draw a small solid white dot in the center of neutral dots for a clean focal point
+      // Draw a small solid white dot in the center of neutral dots for a
+      // clean focal point
       canvas.drawCircle(
         center,
         cs * 0.075,

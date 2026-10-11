@@ -92,9 +92,48 @@ class GridComponent extends PositionComponent with TapCallbacks {
     _cachedDotGridImage = null;
   }
 
+  // ── Cached deflector layer ──────────────────────────────────────────────────
+  // Deflector dots are static until one is consumed, yet they used to be
+  // re-drawn EVERY frame: a string split + int parse per dot and ~4 draw calls
+  // per dot (boards now carry dozens). They are recorded once into a Picture
+  // and replayed with a single drawPicture; the Picture is rebuilt only when a
+  // dot is consumed (count changes), on resize, or on level reset.
+  ui.Picture? _orphanPicture;
+  int _orphanPictureCount = -1;
+
+  void _invalidateOrphanLayer() {
+    _orphanPicture?.dispose();
+    _orphanPicture = null;
+    _orphanPictureCount = -1;
+  }
+
+  void _rebuildOrphanLayer(double cs) {
+    final recorder = ui.PictureRecorder();
+    final pictureCanvas = Canvas(recorder);
+    for (final entry in gameState.orphanDots.entries) {
+      final comma = entry.key.indexOf(',');
+      final dotR = int.parse(entry.key.substring(0, comma));
+      final dotC = int.parse(entry.key.substring(comma + 1));
+      _drawOrphanDot(pictureCanvas,
+          Offset((dotC + 0.5) * cs, (dotR + 0.5) * cs), entry.value, cs);
+    }
+    _orphanPicture?.dispose();
+    _orphanPicture = recorder.endRecording();
+    _orphanPictureCount = gameState.orphanDots.length;
+  }
+
+  /// Visible region of the board in grid-local pixels, or null until the
+  /// screen has reported it. Used to skip work for off-screen arrows.
+  Rect? get visibleLocalRect {
+    final r = _exitViewportSceneRect;
+    if (r == null) return null;
+    return r.shift(Offset(-position.x, -position.y));
+  }
+
   @override
   void onRemove() {
     _invalidateDotGrid();
+    _invalidateOrphanLayer();
     _pointerTargets.clear();
     gameState.onCellPopRequested = null;
     super.onRemove();
@@ -285,6 +324,7 @@ class GridComponent extends PositionComponent with TapCallbacks {
     _poppingCells.clear();
     _pointerTargets.clear();
     _invalidateDotGrid();
+    _invalidateOrphanLayer();
   }
 
   /// Previous grid pixel size, used to detect a real resize vs a spurious
@@ -313,6 +353,7 @@ class GridComponent extends PositionComponent with TapCallbacks {
     if (sizeChanged) {
       _lastGridPixelSize = newGridPixelSize;
       _invalidateDotGrid();
+      _invalidateOrphanLayer();
     }
   }
 
@@ -381,14 +422,18 @@ class GridComponent extends PositionComponent with TapCallbacks {
     }
 
     // ── Orphan deflector dots (drawn on top of background dots) ────────────
+    // Replayed from a cached Picture (see _rebuildOrphanLayer).
     final orphanDots = gameState.orphanDots;
-    for (final entry in orphanDots.entries) {
-      final parts = entry.key.split(',');
-      final dotR = int.parse(parts[0]);
-      final dotC = int.parse(parts[1]);
-      _drawOrphanDot(canvas, Offset((dotC + 0.5) * cs, (dotR + 0.5) * cs),
-          entry.value, cs);
-    }    // ── Release-wave pop overlay (drawn after dots + orphans, before children ─
+    if (orphanDots.isNotEmpty) {
+      if (_orphanPicture == null || _orphanPictureCount != orphanDots.length) {
+        _rebuildOrphanLayer(cs);
+      }
+      canvas.drawPicture(_orphanPicture!);
+    } else if (_orphanPicture != null) {
+      _invalidateOrphanLayer();
+    }
+
+    // ── Release-wave pop overlay (drawn after dots + orphans, before children ─
     if (_poppingCells.isNotEmpty) {
       final baseDot = (cs * 0.045).clamp(0.6, 1.6);
       final dotColor =

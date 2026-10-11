@@ -112,6 +112,32 @@ class ArrowPuzzleGame extends FlameGame {
     return (gridPixelWidth, gridX, gridY);
   }
 
+  // ── Gesture freeze ───────────────────────────────────────────────────────────
+  // The board is zoomed/panned by a Flutter InteractiveViewer wrapped AROUND the
+  // game, so while a pinch/pan is running the Flutter side only needs to
+  // re-composite the last frame at the new transform. Re-running update() and
+  // render() for every arrow on every one of those frames is pure waste on a
+  // weak CPU. Freezing the engine for the duration of the gesture removes that
+  // work; the last frame stays on screen and the game resumes when the finger
+  // lifts.
+  bool _gestureFrozen = false;
+  int _freezeToken = 0;
+
+  void setGestureFrozen(bool frozen) {
+    if (frozen == _gestureFrozen) return;
+    _gestureFrozen = frozen;
+    final token = ++_freezeToken;
+    if (frozen) {
+      pauseEngine();
+      // Failsafe: never leave the game frozen if an end event is ever missed.
+      Future<void>.delayed(const Duration(seconds: 8), () {
+        if (_gestureFrozen && token == _freezeToken) setGestureFrozen(false);
+      });
+    } else {
+      resumeEngine();
+    }
+  }
+
   /// Reset board to initial state (restart level)
   void resetLevel() {
     gameState.resetLevel();
