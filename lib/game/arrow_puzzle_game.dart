@@ -3,6 +3,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
+import '../../data/models/arrow.dart';
 import '../../data/models/level.dart';
 import 'components/grid_component.dart';
 import 'game_state.dart';
@@ -25,7 +26,9 @@ class ArrowPuzzleGame extends FlameGame {
     required this.onLevelComplete,
     required this.onGameOver,
     required this.onLifeLost,
-  });
+  }) {
+    gameState.addListener(_syncGestureFreeze);
+  }
 
   @override
   Color backgroundColor() => Colors.transparent;
@@ -118,9 +121,10 @@ class ArrowPuzzleGame extends FlameGame {
   // re-composite the last frame at the new transform. Re-running update() and
   // render() for every arrow on every one of those frames is pure waste on a
   // weak CPU. Freezing the engine for the duration of the gesture removes that
-  // work; the last frame stays on screen and the game resumes when the finger
-  // lifts.
+  // work. If an arrow is exiting, the engine runs until it completes while
+  // other arrows hold their animation state; then the engine freezes again.
   bool _gestureFrozen = false;
+  bool _enginePausedForGesture = false;
   int _freezeToken = 0;
 
   void setGestureFrozen(bool frozen) {
@@ -128,14 +132,31 @@ class ArrowPuzzleGame extends FlameGame {
     _gestureFrozen = frozen;
     final token = ++_freezeToken;
     if (frozen) {
-      pauseEngine();
       // Failsafe: never leave the game frozen if an end event is ever missed.
       Future<void>.delayed(const Duration(seconds: 8), () {
         if (_gestureFrozen && token == _freezeToken) setGestureFrozen(false);
       });
+    }
+    _syncGestureFreeze();
+  }
+
+  void _syncGestureFreeze() {
+    final hasEscapingArrow =
+        gameState.arrows.any((arrow) => arrow.state == ArrowState.sliding);
+    final shouldPause = _gestureFrozen && !hasEscapingArrow;
+    if (shouldPause == _enginePausedForGesture) return;
+    _enginePausedForGesture = shouldPause;
+    if (shouldPause) {
+      pauseEngine();
     } else {
       resumeEngine();
     }
+  }
+
+  @override
+  void onRemove() {
+    gameState.removeListener(_syncGestureFreeze);
+    super.onRemove();
   }
 
   /// Reset board to initial state (restart level)

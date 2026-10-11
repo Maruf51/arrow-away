@@ -29,6 +29,7 @@ class GridComponent extends PositionComponent with TapCallbacks {
   double gridPixelSize;
 
   final Map<String, ArrowComponent> _arrowComponents = {};
+  bool _gestureFrozen = false;
   late Set<String> _mask;
   late LevelType _levelType;
 
@@ -175,6 +176,13 @@ class GridComponent extends PositionComponent with TapCallbacks {
     }
   }
 
+  void setGestureFrozen(bool frozen) {
+    _gestureFrozen = frozen;
+    for (final arrow in _arrowComponents.values) {
+      arrow.setGestureFrozen(frozen);
+    }
+  }
+
   void showHintArrow(String arrowId) {
     _arrowComponents[arrowId]?.showHint();
   }
@@ -308,7 +316,9 @@ class GridComponent extends PositionComponent with TapCallbacks {
         cellSize: cellSize,
         gameState: gameState,
         levelType: _levelType,
-      )..position = Vector2(0, 0);
+      )
+        ..position = Vector2(0, 0)
+        ..setGestureFrozen(_gestureFrozen);
       final viewport = _exitViewportSceneRect;
       if (viewport != null) {
         comp.updateExitViewport(viewport, Offset(position.x, position.y));

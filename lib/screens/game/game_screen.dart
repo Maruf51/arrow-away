@@ -424,7 +424,8 @@ class _GameScreenState extends State<GameScreen>
     _completionCoinReward = reward;
 
     Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) {
+      _runAfterCurrentRouteFrame(() {
+        if (!_showingComplete) return;
         _confettiController.play();
         if (context.read<ProgressRepository>().vibrationEnabled) {
           Future.forEach(List.generate(6, (i) => i * 150), (delay) async {
@@ -435,7 +436,14 @@ class _GameScreenState extends State<GameScreen>
           });
         }
         _showLevelCompleteDialog(stars, reward);
-      }
+      });
+    });
+  }
+
+  void _runAfterCurrentRouteFrame(VoidCallback callback) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+      callback();
     });
   }
 
@@ -446,7 +454,9 @@ class _GameScreenState extends State<GameScreen>
       HapticFeedback.vibrate();
     }
     Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) _showGameOverDialog();
+      _runAfterCurrentRouteFrame(() {
+        if (_showingGameOver) _showGameOverDialog();
+      });
     });
   }
 
@@ -462,7 +472,9 @@ class _GameScreenState extends State<GameScreen>
       HapticFeedback.vibrate();
     }
     Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) _showDeadlockDialog();
+      _runAfterCurrentRouteFrame(() {
+        if (_showingDeadlock) _showDeadlockDialog();
+      });
     });
   }
 

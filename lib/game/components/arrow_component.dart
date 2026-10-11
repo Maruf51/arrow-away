@@ -64,6 +64,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
 
   bool _isAnimating = false;
   bool _isBlockedAnimating = false;
+  bool _freezeNonExitAnimations = false;
   double _blockDuration = 0.0;
   double _blockTime = 0.0;
   double _maxBlockSlide = 0.0;
@@ -192,6 +193,10 @@ class ArrowComponent extends PositionComponent with HasPaint {
   void updateExitViewport(Rect sceneRect, Offset gridSceneOffset) {
     _exitViewportSceneRect = sceneRect;
     _gridSceneOffset = gridSceneOffset;
+  }
+
+  void setGestureFrozen(bool frozen) {
+    _freezeNonExitAnimations = frozen;
   }
 
   // ── Hit test: tap anywhere along the arrow body ───────────────────────────
@@ -651,6 +656,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
 
   @override
   void update(double dt) {
+    if (_freezeNonExitAnimations && !_isExiting) return;
     super.update(dt);
     _hintRemaining = (_hintRemaining - dt).clamp(0.0, 3.2);
 
