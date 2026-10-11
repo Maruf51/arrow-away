@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import '../models/arrow.dart';
 import '../models/level.dart';
+import '../../ui/renderer/PairVisuals.dart';
 import '../../core/constants.dart';
 import 'solver.dart';
 import 'mask_generator_v2.dart';
@@ -632,7 +633,7 @@ class LevelGeneratorV2 {
       else                   pairs = (arrowCount * 0.38).floor().clamp(5, 14);
     }
     if (level >= 150) pairs += 2; // late game: more simultaneous-exit puzzles
-    return pairs.clamp(1, 15);
+    return pairs.clamp(1, PairVisuals.maxDistinctPairs);
   }
 
   /// Layers the dependency graph with each pair contracted into one node
@@ -1604,7 +1605,7 @@ class LevelGeneratorV2 {
       else                   pairs = (arrows.length * 0.38).floor().clamp(5, 14);
     }
 
-    pairs = pairs.clamp(1, 15); // Max 15 color pairs hard cap
+    pairs = pairs.clamp(1, PairVisuals.maxDistinctPairs);
 
     if (level == 395 || level == 437) pairs = 0;
     if (pairs == 0) return;

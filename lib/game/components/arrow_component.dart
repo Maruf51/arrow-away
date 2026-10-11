@@ -11,6 +11,7 @@ import '../../core/app_colors.dart';
 import '../../data/models/arrow.dart';
 import '../../data/models/level.dart';
 import '../game_state.dart';
+import '../../ui/renderer/PairVisuals.dart';
 
 /// One flowing neon-flow liquid segment.
 ///
@@ -114,8 +115,6 @@ class ArrowComponent extends PositionComponent with HasPaint {
   final Paint _paintCaretFill = Paint(); // red head
   final Paint _paintLiquid = Paint(); // fluid core (white)
   final Paint _paintInnerHead = Paint(); // white triangle inside the head
-  final Paint _paintRingWhite = Paint();
-  final Paint _paintRingGroup = Paint();
 
   /// Deterministically generated once per arrow; see [_buildLiquidSegs].
   List<_LiquidSeg>? _cachedLiquidSegs;
@@ -886,22 +885,62 @@ class ArrowComponent extends PositionComponent with HasPaint {
     canvas.drawPath(caretPath, _paintCaretFillClassic);
 
     // ── Color Lock Partner Ring Indicator at Tail Node ─────────────────────
-    if (arrowModel.mechanic == SnakeMechanic.colorLock && pts.isNotEmpty) {
+    if (arrowModel.mechanic == SnakeMechanic.colorLock &&
+        arrowModel.colorGroup != null &&
+        pts.isNotEmpty) {
       final tailPx = pts.last;
+      final visual = PairVisuals.resolve(arrowModel.colorGroup!);
+      final badgeRadius = sw * 0.90;
       canvas.drawCircle(
         tailPx,
-        sw * 0.70,
-        _paintRingWhite
+        badgeRadius,
+        Paint()
           ..color = Colors.white
           ..style = PaintingStyle.fill,
       );
-      canvas.drawCircle(
-        tailPx,
-        sw * 0.45,
-        _paintRingGroup
-          ..color = mainColor
-          ..style = PaintingStyle.fill,
-      );
+      _drawPairGlyph(canvas, tailPx, badgeRadius, visual.glyph, visual.color);
+    }
+  }
+
+  void _drawPairGlyph(
+    Canvas canvas,
+    Offset center,
+    double r,
+    PairGlyph glyph,
+    Color color,
+  ) {
+    final stroke = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = r * 0.42
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final fill = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    final g = r * 0.62;
+    switch (glyph) {
+      case PairGlyph.ring:
+        canvas.drawCircle(center, g * 0.85, stroke);
+        break;
+      case PairGlyph.triangle:
+        final path = Path()
+          ..moveTo(center.dx, center.dy - g * 1.00)
+          ..lineTo(center.dx + g * 0.95, center.dy + g * 0.70)
+          ..lineTo(center.dx - g * 0.95, center.dy + g * 0.70)
+          ..close();
+        canvas.drawPath(path, fill);
+        break;
+      case PairGlyph.diamond:
+        final path = Path()
+          ..moveTo(center.dx, center.dy - g * 1.05)
+          ..lineTo(center.dx + g * 1.05, center.dy)
+          ..lineTo(center.dx, center.dy + g * 1.05)
+          ..lineTo(center.dx - g * 1.05, center.dy)
+          ..close();
+        canvas.drawPath(path, fill);
+        break;
     }
   }
 
@@ -1226,23 +1265,18 @@ class ArrowComponent extends PositionComponent with HasPaint {
     }
 
     final tailPx = pts.last;
-    final groupColor = AppColors.getGroupColor(arrowModel.colorGroup!);
+    final visual = PairVisuals.resolve(arrowModel.colorGroup!);
+    final badgeRadius = sw * 0.90;
     // Colour-lock indicator. Only drawn on colorLock levels, so it is outside
     // the 5-call steady-state budget above.
     canvas.drawCircle(
       tailPx,
-      sw * 0.78,
-      _paintRingWhite
-        ..color = Colors.white.withValues(alpha: 0.95)
+      badgeRadius,
+      Paint()
+        ..color = Colors.white
         ..style = PaintingStyle.fill,
     );
-    canvas.drawCircle(
-      tailPx,
-      sw * 0.54,
-      _paintRingGroup
-        ..color = groupColor
-        ..style = PaintingStyle.fill,
-    );
+    _drawPairGlyph(canvas, tailPx, badgeRadius, visual.glyph, visual.color);
   }
 
   // ── Long-press preview path builder & renderer ──────────────────────────────

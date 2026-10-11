@@ -98,6 +98,8 @@ class AppColors {
     Color(0xFFFF4081),
   ];
 
+  static int get pairColorCount => _groupColorsDark.length;
+
   static Color getGroupColor(int groupIndex) {
     return _groupColorsDark[groupIndex % _groupColorsDark.length];
   }
