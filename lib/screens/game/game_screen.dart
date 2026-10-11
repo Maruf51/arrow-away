@@ -44,6 +44,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   bool _inspectingDeadlock = false;
   int _lives = AppConstants.maxLives;
   int? _loadedLevelNum;
+  int? _loadedSandboxGridSize;
+  bool _isSandbox = false;
   bool _isLoadingLevel = false; // true while level is being generated async
 
   // Timer fields
@@ -71,14 +73,38 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final levelNum = args?['level'] as int? ?? 1;
-    if (_loadedLevelNum != levelNum) {
+    final sandboxGridSize = args?['sandboxGridSize'] as int?;
+    _isSandbox = sandboxGridSize != null;
+    if (_loadedLevelNum != levelNum ||
+        _loadedSandboxGridSize != sandboxGridSize) {
       _loadedLevelNum = levelNum;
-      _loadLevelAsync(levelNum);
+      _loadedSandboxGridSize = sandboxGridSize;
+      _loadLevelAsync(levelNum, sandboxGridSize: sandboxGridSize);
     }
   }
 
-  Future<void> _loadLevelAsync(int levelNum) async {
+  Future<void> _loadLevelAsync(int levelNum, {int? sandboxGridSize}) async {
     final levelRepo = context.read<LevelRepository>();
+
+    if (sandboxGridSize != null) {
+      if (mounted) setState(() => _isLoadingLevel = true);
+      try {
+        final level = await levelRepo.generateSandboxLevelAsync(
+          levelNum,
+          sandboxGridSize,
+        );
+        if (!mounted) return;
+        _level = level;
+        _initGame();
+        setState(() => _isLoadingLevel = false);
+      } catch (_) {
+        if (!mounted) return;
+        _level = levelRepo.getLevel(levelNum);
+        _initGame();
+        setState(() => _isLoadingLevel = false);
+      }
+      return;
+    }
 
     // If level is already cached, load it instantly with no spinner.
     if (levelRepo.isCached(levelNum)) {
@@ -180,18 +206,20 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     final score =
         AppConstants.baseScore + (_lives * AppConstants.bonusPerRemainingLife);
 
-    progress.recordLevelComplete(LevelResult(
-      levelNumber: _level.levelNumber,
-      stars: stars,
-      score: score,
-      movesUsed: _gameState!.movesUsed,
-      livesLost: _gameState!.livesLost,
-      completed: true,
-      completedAt: DateTime.now(),
-    ));
+    if (!_isSandbox) {
+      progress.recordLevelComplete(LevelResult(
+        levelNumber: _level.levelNumber,
+        stars: stars,
+        score: score,
+        movesUsed: _gameState!.movesUsed,
+        livesLost: _gameState!.livesLost,
+        completed: true,
+        completedAt: DateTime.now(),
+      ));
 
-    final levelType = AppConstants.levelTypeFor(_level.levelNumber);
-    adManager.onLevelComplete(_level.levelNumber, levelType.isSpecial);
+      final levelType = AppConstants.levelTypeFor(_level.levelNumber);
+      adManager.onLevelComplete(_level.levelNumber, levelType.isSpecial);
+    }
 
     Future.delayed(const Duration(milliseconds: 300), () {
       if (mounted) {
@@ -668,7 +696,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     Navigator.pushReplacementNamed(
       context,
       '/game',
-      arguments: {'level': _level.levelNumber + 1},
+      arguments: {
+        'level': _level.levelNumber + 1,
+        if (_isSandbox) 'sandboxGridSize': _loadedSandboxGridSize,
+      },
     );
   }
 
@@ -678,6 +709,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   }
 
   void _handleDoubleCoins() {
+    if (_isSandbox) {
+      _handleNextLevel();
+      return;
+    }
     final adManager = context.read<AdManager>();
     Navigator.pop(context);
     bool rewarded = false;

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import '../../data/repositories/level_repository.dart';
 import '../../widgets/unified_banner_ad.dart';
 import '../../widgets/ribbon_header.dart';
 import '../../widgets/shop_dialog.dart';
+import '../../widgets/developer_menu_dialog.dart';
 import '../settings/settings_screen.dart';
 import '../../core/audio_manager.dart';
 import 'dart:io';
@@ -25,6 +27,8 @@ class MainMenuScreen extends StatefulWidget {
 
 class _MainMenuScreenState extends State<MainMenuScreen> {
   bool _isNavigating = false;
+  int _titleTapCount = 0;
+  Timer? _titleTapReset;
 
   @override
   void initState() {
@@ -35,6 +39,48 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       _preWarmLevels();
       _checkPlayStoreUpdate();
     });
+  }
+
+  @override
+  void dispose() {
+    _titleTapReset?.cancel();
+    super.dispose();
+  }
+
+  void _handleTitleTap() {
+    _titleTapReset?.cancel();
+    _titleTapCount++;
+    _titleTapReset = Timer(const Duration(seconds: 2), () {
+      _titleTapCount = 0;
+    });
+    if (_titleTapCount < 10) return;
+
+    _titleTapCount = 0;
+    _titleTapReset?.cancel();
+    AudioManager.instance.playClick();
+    _showDeveloperMenu();
+  }
+
+  Future<void> _showDeveloperMenu() async {
+    final action = await showDialog<Map<String, int>>(
+      context: context,
+      builder: (_) => const DeveloperMenuDialog(),
+    );
+    if (!mounted || action == null) return;
+    final level = action['level'];
+    if (level == null) return;
+
+    setState(() => _isNavigating = true);
+    await Navigator.pushNamed(
+      context,
+      '/game',
+      arguments: {
+        'level': level,
+        if (action.containsKey('gridSize'))
+          'sandboxGridSize': action['gridSize'],
+      },
+    );
+    if (mounted) setState(() => _isNavigating = false);
   }
 
   void _preWarmLevels() {
@@ -266,6 +312,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
   Widget _buildTitle(ProgressRepository progress) {
     return GestureDetector(
+      onTap: _handleTitleTap,
       onLongPress: () {
         HapticFeedback.heavyImpact();
         progress.toggleDemoMode();

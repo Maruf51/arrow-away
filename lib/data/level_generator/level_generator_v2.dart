@@ -7,6 +7,7 @@ import '../models/level.dart';
 import '../../core/constants.dart';
 import 'solver.dart';
 import 'mask_generator_v2.dart';
+import 'full_board_generator.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  Arrow Puzzle Level Generator — V2
@@ -73,24 +74,30 @@ class LevelGeneratorV2 {
   // ── Entry point ─────────────────────────────────────────────────────────────
 
   /// Generate a level. Seeded by levelNumber for determinism.
-  static LevelModel generateLevel(int levelNumber) {
+  static LevelModel generateLevel(int levelNumber, {int? gridSizeOverride}) {
     // ── Tutorial levels — hand-authored, straight arrows only ─────────────────
     // ┌─────────────────────────────────────────────────────────────────────────┐
     // │  TUTORIAL RULE: All arrow paths in levels 1–3 are STRAIGHT (no bends). │
     // │  No color pairs (except Level 2), no direction dots (except Level 3).  │
     // │  Bent paths via _growPath() are used only from level 4 onward.         │
     // └─────────────────────────────────────────────────────────────────────────┘
+    if (levelNumber <= 3 && gridSizeOverride != null && gridSizeOverride != 10) {
+      return generateLevel(4, gridSizeOverride: gridSizeOverride)
+          .copyWith(levelNumber: levelNumber);
+    }
     if (levelNumber == 1) return _buildTutorial1();
     if (levelNumber == 2) return _buildTutorial2();
     if (levelNumber == 3) return _buildTutorial3();
 
     final type    = AppConstants.levelTypeFor(levelNumber);
-    int gridSize  = AppConstants.gridSizeForLevel(levelNumber);
+    int gridSize  = gridSizeOverride ?? AppConstants.gridSizeForLevel(levelNumber);
 
     // Specific overrides from V1 retained
-    if (levelNumber == 213) gridSize = 32;
-    if (levelNumber == 395) gridSize = 35;
-    if (levelNumber == 437) gridSize = 36;
+    if (gridSizeOverride == null) {
+      if (levelNumber == 213) gridSize = 32;
+      if (levelNumber == 395) gridSize = 35;
+      if (levelNumber == 437) gridSize = 36;
+    }
 
     final seed = levelNumber * 7919 + 314159;
     final rng  = Random(seed);
@@ -98,6 +105,20 @@ class LevelGeneratorV2 {
     final maskShape = _shapeFor(type, rng, levelNumber);
     final mask      = MaskGeneratorV2.shapeByName(maskShape.name, gridSize, rng);
     final params    = _paramsFor(levelNumber, type, gridSize, mask);
+
+    // ── Full-board generator (100% arrow coverage) ────────────────────────────
+    // Tried first. If it cannot produce a verified level, the legacy pipeline
+    // below runs exactly as before.
+    if (_useFullFill(levelNumber, type)) {
+      final full = _generateFullBoard(
+        levelNumber: levelNumber,
+        gridSize: gridSize,
+        mask: mask,
+        type: type,
+        maskShape: maskShape,
+      );
+      if (full != null) return full;
+    }
 
     LevelModel? level;
 
@@ -130,6 +151,608 @@ class LevelGeneratorV2 {
     }
 
     return level ?? _fallback(levelNumber, gridSize, mask, type);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  FULL-BOARD MODE — every mask cell is an arrow body, solvable by design
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Set to false to leave Boss/God levels on the legacy pipeline.
+  static const bool _fullFillSpecialLevels = true;
+
+  static bool _useFullFill(int levelNumber, LevelType type) {
+    if (type == LevelType.tutorial) return false;
+    // Hand-tuned sparse special levels keep their original design.
+    if (levelNumber == 213 || levelNumber == 395 || levelNumber == 437) {
+      return false;
+    }
+    if ((type == LevelType.boss || type == LevelType.god) &&
+        !_fullFillSpecialLevels) {
+      return false;
+    }
+    return true;
+  }
+
+  /// Difficulty knobs for the full-board generator.
+  ///  • avgLen      shorter arrows => MORE arrows => deeper dependency chains.
+  ///  • short/longFrac  bimodal mix: many 2-3 cell arrows + some very long
+  ///                snakes (harder to scan AND harder to trace).
+  ///  • blockBias   how strongly we pick the head whose ray crosses more arrows.
+  ///  • candidates  generate K boards and keep the hardest (see _rankByDifficulty).
+  static ({
+    double avgLen,
+    int maxLen,
+    double blockBias,
+    int candidates,
+    double shortFrac,
+    double longFrac
+  }) _fullParamsFor(int levelNumber, LevelType type, int gridSize) {
+    final double p = ((levelNumber - 4) / 396.0).clamp(0.0, 1.0);
+    double avgLen = 6.0 - 2.5 * p;
+    if (type == LevelType.boss) avgLen -= 0.5;
+    if (type == LevelType.god) avgLen -= 0.8;
+    if (avgLen < 3.0) avgLen = 3.0;
+
+    final int maxLen = (8 + gridSize ~/ 4).clamp(8, 18);
+    final double blockBias = 0.3 + 0.6 * p;
+
+    // Bimodal lengths only once the gentle intro levels are over.
+    final bool mix = levelNumber >= 21;
+    final double shortFrac = mix ? 0.25 : 0.0;
+    final double longFrac = mix ? 0.15 : 0.0;
+
+    int candidates = 1 + levelNumber ~/ 35;
+    if (type == LevelType.boss || type == LevelType.god) candidates += 1;
+    candidates = candidates.clamp(1, 10);
+    if (gridSize > 20 && candidates > 7) candidates = 7;
+    if (gridSize > 30 && candidates > 5) candidates = 5; // bound build time
+
+    return (
+      avgLen: avgLen,
+      maxLen: maxLen,
+      blockBias: blockBias,
+      candidates: candidates,
+      shortFrac: shortFrac,
+      longFrac: longFrac,
+    );
+  }
+
+  /// Ranks candidate boards hardest-first. Each metric is converted to a
+  /// z-score WITHIN this level's candidate set (the metrics have very different
+  /// scales), then combined:
+  ///   + deeper dependency chain      + more near-miss decoys
+  ///   + more blockers per arrow      − more arrows free on move one
+  ///   − more uncovered holes
+  static void _rankByDifficulty(List<FullBoardResult> rs) {
+    if (rs.length < 2) return;
+    List<double> z(double Function(FullBoardResult) f) {
+      final v = rs.map(f).toList();
+      final mean = v.reduce((a, b) => a + b) / v.length;
+      double varSum = 0;
+      for (final x in v) {
+        varSum += (x - mean) * (x - mean);
+      }
+      final sd = sqrt(varSum / v.length);
+      return v.map((x) => sd < 1e-9 ? 0.0 : (x - mean) / sd).toList();
+    }
+
+    final zChain = z((r) => r.chainDepth.toDouble());
+    final zFree = z((r) => r.initiallyFree.toDouble());
+    final zDecoy = z((r) => r.decoys.toDouble());
+    final zBlk = z((r) => r.avgBlockers);
+    final zHole = z((r) => r.emptyCells.length.toDouble());
+
+    final score = <FullBoardResult, double>{};
+    for (int i = 0; i < rs.length; i++) {
+      score[rs[i]] = 1.0 * zChain[i] -
+          0.8 * zFree[i] +
+          0.6 * zDecoy[i] +
+          0.5 * zBlk[i] -
+          0.4 * zHole[i];
+    }
+    rs.sort((a, b) => score[b]!.compareTo(score[a]!));
+  }
+
+  /// Builds K candidate boards, ranks them by measured difficulty, then runs
+  /// pairs + deflectors + solver on the hardest one that verifies.
+  /// Returns null if nothing verifies (caller falls back to the old pipeline).
+  static LevelModel? _generateFullBoard({
+    required int levelNumber,
+    required int gridSize,
+    required Set<String> mask,
+    required LevelType type,
+    required MaskShape maskShape,
+  }) {
+    final fp = _fullParamsFor(levelNumber, type, gridSize);
+    final int baseSeed = levelNumber * 7919 + 314159;
+
+    final results = <FullBoardResult>[];
+    for (int v = 0; v < fp.candidates; v++) {
+      FullBoardResult? r;
+      for (int retry = 0; retry < 3 && r == null; retry++) {
+        final rng = Random(baseSeed + (v + 1) * 104729 + retry * 1299709);
+        r = FullBoardGenerator.generate(
+          gridSize: gridSize,
+          mask: mask,
+          rng: rng,
+          avgLen: fp.avgLen,
+          maxLen: fp.maxLen,
+          blockBias: fp.blockBias,
+          shortFrac: fp.shortFrac,
+          longFrac: fp.longFrac,
+          minCoverage: 0.95, // >= 95% arrow coverage counts as success
+        );
+      }
+      if (r != null) results.add(r);
+    }
+    if (results.isEmpty) return null;
+
+    _rankByDifficulty(results);
+
+    for (int i = 0; i < results.length; i++) {
+      // First with deflectors; if the strict solver rejects, retry without.
+      for (final allowDots in const [true, false]) {
+        final level = _finishFullLevel(
+          result: results[i],
+          levelNumber: levelNumber,
+          gridSize: gridSize,
+          mask: mask,
+          type: type,
+          maskShape: maskShape,
+          pairSeed: baseSeed + 31 * (i + 1),
+          allowDots: allowDots,
+        );
+        if (level != null) {
+          _log('Level $levelNumber FULL-BOARD ok: arrows=${results[i].arrows.length} '
+              'holes=${results[i].emptyCells.length} chain=${results[i].chainDepth} '
+              'free=${results[i].initiallyFree} decoys=${results[i].decoys} '
+              'dots=${level.orphanDots.where((d) => d.type != OrphanDotType.neutral).length}\n');
+          return level;
+        }
+      }
+    }
+    return null;
+  }
+
+  static LevelModel? _finishFullLevel({
+    required FullBoardResult result,
+    required int levelNumber,
+    required int gridSize,
+    required Set<String> mask,
+    required LevelType type,
+    required MaskShape maskShape,
+    required int pairSeed,
+    required bool allowDots,
+  }) {
+    // Hard guarantee: every mask cell is EITHER in exactly one arrow OR a hole.
+    final covered = <String>{};
+    for (final spec in result.arrows) {
+      for (final pt in spec.path) {
+        if (!covered.add('${pt[0]},${pt[1]}')) return null;
+      }
+    }
+    final holes = <int>[]; // packed r*1000+c
+    for (final h in result.emptyCells) {
+      if (covered.contains('${h[0]},${h[1]}')) return null;
+      holes.add(h[0] * 1000 + h[1]);
+    }
+    if (covered.length + holes.length != mask.length) return null;
+    for (final k in covered) {
+      if (!mask.contains(k)) return null;
+    }
+
+    final arrows = <ArrowModel>[];
+    for (int i = 0; i < result.arrows.length; i++) {
+      final spec = result.arrows[i];
+      final head = spec.path[0];
+      arrows.add(ArrowModel(
+        id: 'a_${levelNumber}_$i',
+        row: head[0],
+        col: head[1],
+        direction: spec.direction,
+        isPartOfPattern: true,
+        path: spec.path,
+        mechanic: SnakeMechanic.standard,
+      ));
+    }
+
+    // 1) Colour pairs on BLOCKED arrows only (straight-ray graph, still exact).
+    if (levelNumber >= 16) {
+      _hardPairMix(arrows, levelNumber, type, Random(pairSeed), gridSize);
+    }
+
+    // 2) Deflector dots (level 21+): holes first, then shortened tails. Every
+    //    accepted dot re-verifies the whole board with the runtime-exact solver.
+    final dots = allowDots
+        ? _carveDeflectors(
+            arrows: arrows,
+            gridSize: gridSize,
+            maskSize: mask.length,
+            level: levelNumber,
+            type: type,
+            holes: holes,
+            rng: Random(pairSeed ^ 0x5bd1e995),
+          )
+        : <int, OrphanDotType>{};
+
+    // 3) Remaining holes become neutral dots (as the legacy pipeline does).
+    final orphanDots = <OrphanDot>[];
+    dots.forEach((packed, t) {
+      orphanDots.add(OrphanDot(row: packed ~/ 1000, col: packed % 1000, type: t));
+    });
+    for (final h in holes) {
+      if (!dots.containsKey(h)) {
+        orphanDots.add(
+            OrphanDot(row: h ~/ 1000, col: h % 1000, type: OrphanDotType.neutral));
+      }
+    }
+
+    final level = LevelModel(
+      levelNumber: levelNumber,
+      gridSize: gridSize,
+      arrows: arrows,
+      patternName: _nameFor(type, levelNumber),
+      difficulty: _difficultyFor(levelNumber, type),
+      maskShape: maskShape,
+      mask: mask,
+      orphanDots: orphanDots,
+    );
+
+    final greedyOrder = _greedySolve(level);
+    if (greedyOrder == null) return null;
+
+    if (gridSize <= 20) {
+      final strict = LevelSolver.solve(level, 6000);
+      if (strict == null) return null;
+      return level.copyWith(solutionOrder: strict);
+    }
+    return level.copyWith(solutionOrder: greedyOrder);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  DEFLECTORS (full-board levels, level 21+)
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  //  Dots bend exit rays, so rays are no longer straight lines and the simple
+  //  acyclic-graph guarantee no longer applies. Instead EVERY dot is accepted
+  //  only if the runtime-exact greedy solver still clears the board, colour
+  //  pairs still have no free partner, and no pair deadlock appears.
+  //
+  //  Candidate cells (only cells that lie on some arrow's straight exit ray, so
+  //  the dot actually matters): leftover holes first (free), then the TAIL cell
+  //  of arrows with >= 3 cells (shortening an arrow only removes blockers, so it
+  //  can never create a cycle by itself).
+  //
+  //  Among the valid directions we keep the one that makes the board take the
+  //  most solver rounds, and we never accept a dot that lowers that number.
+  static Map<int, OrphanDotType> _carveDeflectors({
+    required List<ArrowModel> arrows,
+    required int gridSize,
+    required int maskSize,
+    required int level,
+    required LevelType type,
+    required List<int> holes,
+    required Random rng,
+  }) {
+    final dots = <int, OrphanDotType>{};
+    if (level <= 20) return dots; // STRICT GATE: no dots before level 21
+
+    final double p = ((level - 21) / 380.0).clamp(0.0, 1.0);
+    double frac = 0.01 + 0.03 * p;
+    if (type == LevelType.boss || type == LevelType.god) frac *= 1.3;
+    if (frac > 0.045) frac = 0.045;
+    final int want = (maskSize * frac).round();
+    if (want <= 0) return dots;
+
+    // How many arrows' STRAIGHT exit rays pass through each cell.
+    final rayCount = <int, int>{};
+    for (final a in arrows) {
+      final d = a.direction.delta;
+      int r = a.path[0][0] + d[0], c = a.path[0][1] + d[1];
+      while (r >= 0 && r < gridSize && c >= 0 && c < gridSize) {
+        final k = r * 1000 + c;
+        rayCount[k] = (rayCount[k] ?? 0) + 1;
+        r += d[0];
+        c += d[1];
+      }
+    }
+
+    // Candidates: (priority, cell, arrowIndex or -1 for a hole).
+    final cands = <(double, int, int)>[];
+    for (final h in holes) {
+      final rc = rayCount[h] ?? 0;
+      if (rc > 0) cands.add((rc + 2.0 + rng.nextDouble(), h, -1));
+    }
+    for (int i = 0; i < arrows.length; i++) {
+      if (arrows[i].path.length < 3) continue;
+      final t = arrows[i].path.last;
+      final k = t[0] * 1000 + t[1];
+      final rc = rayCount[k] ?? 0;
+      if (rc > 0) cands.add((rc + rng.nextDouble(), k, i));
+    }
+    cands.sort((a, b) => b.$1.compareTo(a.$1));
+
+    final minDotDist = (gridSize * 0.20).floor().clamp(2, 6);
+
+    // Whole-board occupancy + dot tables in the formats the helpers expect.
+    final occ = <String>{};
+    for (final a in arrows) {
+      for (final pt in a.path) {
+        occ.add('${pt[0]},${pt[1]}');
+      }
+    }
+    final dotsStr = <String, OrphanDotType>{};
+
+    int roundsOf(Map<int, OrphanDotType> m) {
+      final out = <int>[];
+      final order = _greedySolveWithMap(gridSize, arrows, m, roundsOut: out);
+      return order == null ? -1 : out.first;
+    }
+
+    int cur = roundsOf(dots);
+    if (cur < 0) return dots; // base board must already be solvable
+
+    bool pairsStillBlocked() {
+      for (final a in arrows) {
+        if (a.colorGroup == null) continue;
+        if (_simulateExitClear(a, gridSize, occ, dotsStr)) return false;
+      }
+      return true;
+    }
+
+    int budget = want * 4;
+    for (final cand in cands) {
+      if (dots.length >= want || budget-- <= 0) break;
+      final cell = cand.$2;
+      final ai = cand.$3;
+      final cr = cell ~/ 1000, cc = cell % 1000;
+
+      // Colored dots must be spaced apart (same rule the legacy pipeline uses).
+      bool tooClose = false;
+      for (final k in dots.keys) {
+        if ((k ~/ 1000 - cr).abs() + (k % 1000 - cc).abs() < minDotDist) {
+          tooClose = true;
+          break;
+        }
+      }
+      if (tooClose) continue;
+
+      // Tail candidates: shorten the arrow (it must still own this tail).
+      ArrowModel? original;
+      if (ai >= 0) {
+        final a = arrows[ai];
+        final t = a.path.last;
+        if (a.path.length < 3 || t[0] != cr || t[1] != cc) continue;
+        original = a;
+        arrows[ai] = a.copyWith(
+            path: List<List<int>>.from(a.path)..removeLast());
+        occ.remove('$cr,$cc');
+      }
+
+      int bestRounds = -1;
+      OrphanDotType? bestType;
+      for (final dir in ArrowDirection.values) {
+        final t = _dotTypeForDir(dir);
+        dots[cell] = t;
+        dotsStr['$cr,$cc'] = t;
+        final r = roundsOf(dots);
+        final ok = r >= 0 &&
+            r >= cur &&
+            !_hasColorLockDeadlock(arrows, gridSize, dotsStr) &&
+            pairsStillBlocked();
+        dots.remove(cell);
+        dotsStr.remove('$cr,$cc');
+        if (ok && r > bestRounds) {
+          bestRounds = r;
+          bestType = t;
+        }
+      }
+
+      if (bestType != null) {
+        dots[cell] = bestType;
+        dotsStr['$cr,$cc'] = bestType;
+        cur = bestRounds;
+      } else if (original != null) {
+        arrows[ai] = original; // revert the shortening
+        occ.add('$cr,$cc');
+      }
+    }
+    return dots;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  HARD COLOR PAIRS (full-board levels)
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  //  Rule of the game: tapping one arrow of a pair fires BOTH, so both exit
+  //  rays must be clear at the same moment.
+  //
+  //  The legacy mixer only paired arrows whose rays were ALREADY clear, so every
+  //  pair was free on move one (tap = 2 arrows gone, no thinking). Here a pair
+  //  is chosen only among BLOCKED arrows, ranked by how deep / how separate
+  //  their blockers are, so the player must clear two different regions before
+  //  the pair can fire.
+  //
+  //  Solvability: a pair behaves like ONE node whose blockers are the union of
+  //  both partners' blockers. A candidate is accepted only if the dependency
+  //  graph, with the pair contracted into one node, is still acyclic (this also
+  //  rejects "A is blocked by something that waits on B"). It also rejects any
+  //  pair where one partner's ray crosses the other's body, which is exactly
+  //  what the verifier (_hasColorLockDeadlock) rejects.
+
+  /// Pair count per level band — same table as _mechanicMixV2.
+  static int _pairCountFor(int level, LevelType type, int arrowCount) {
+    int pairs;
+    if (type == LevelType.god) {
+      if      (level < 30)   pairs = 3;
+      else if (level < 60)   pairs = (arrowCount * 0.25).floor().clamp(3, 7);
+      else if (level < 150)  pairs = (arrowCount * 0.35).floor().clamp(4, 10);
+      else                   pairs = (arrowCount * 0.40).floor().clamp(5, 14);
+    } else if (type == LevelType.boss) {
+      if      (level < 30)   pairs = 2;
+      else if (level < 60)   pairs = (arrowCount * 0.20).floor().clamp(2, 5);
+      else if (level < 150)  pairs = (arrowCount * 0.28).floor().clamp(3, 8);
+      else                   pairs = (arrowCount * 0.35).floor().clamp(4, 12);
+    } else {
+      if      (level < 25)   pairs = 1;
+      else if (level < 45)   pairs = (arrowCount * 0.15).floor().clamp(1, 3);
+      else if (level < 80)   pairs = (arrowCount * 0.22).floor().clamp(2, 5);
+      else if (level < 150)  pairs = (arrowCount * 0.28).floor().clamp(3, 8);
+      else if (level < 300)  pairs = (arrowCount * 0.32).floor().clamp(4, 10);
+      else                   pairs = (arrowCount * 0.38).floor().clamp(5, 14);
+    }
+    if (level >= 150) pairs += 2; // late game: more simultaneous-exit puzzles
+    return pairs.clamp(1, 15);
+  }
+
+  /// Layers the dependency graph with each pair contracted into one node
+  /// ([rep] maps every arrow to its group representative). Returns the layer
+  /// depth per representative, or null if the contracted graph has a cycle.
+  static List<int>? _layerDepth(List<Set<int>> blockedBy, List<int> rep) {
+    final n = blockedBy.length;
+    final isNode = List<bool>.filled(n, false);
+    for (int i = 0; i < n; i++) {
+      isNode[rep[i]] = true;
+    }
+    final deps = List.generate(n, (_) => <int>{});
+    for (int x = 0; x < n; x++) {
+      for (final y in blockedBy[x]) {
+        final u = rep[x], v = rep[y];
+        if (u != v) deps[u].add(v);
+      }
+    }
+    final users = List.generate(n, (_) => <int>[]);
+    final remaining = List<int>.filled(n, 0);
+    int nodes = 0;
+    for (int u = 0; u < n; u++) {
+      if (!isNode[u]) continue;
+      nodes++;
+      remaining[u] = deps[u].length;
+      for (final v in deps[u]) {
+        users[v].add(u);
+      }
+    }
+    final depth = List<int>.filled(n, 0);
+    final queue = <int>[];
+    for (int u = 0; u < n; u++) {
+      if (isNode[u] && remaining[u] == 0) {
+        depth[u] = 1;
+        queue.add(u);
+      }
+    }
+    int head = 0;
+    while (head < queue.length) {
+      final u = queue[head++];
+      for (final w in users[u]) {
+        if (depth[w] < depth[u] + 1) depth[w] = depth[u] + 1;
+        if (--remaining[w] == 0) queue.add(w);
+      }
+    }
+    return queue.length == nodes ? depth : null;
+  }
+
+  /// Assigns colour pairs to BLOCKED arrows only (preferring chained pairs
+  /// and partners with disjoint blockers). Returns the pair count.
+  static int _hardPairMix(List<ArrowModel> arrows, int level, LevelType type,
+      Random rng, int gridSize) {
+    if (arrows.length < 4 || level <= 15) return 0;
+    final want = _pairCountFor(level, type, arrows.length);
+    final n = arrows.length;
+
+    // blockedBy[i] = arrows whose body touches arrow i's exit ray.
+    final owner = <int, int>{};
+    for (int i = 0; i < n; i++) {
+      for (final pt in arrows[i].path) {
+        owner[pt[0] * gridSize + pt[1]] = i;
+      }
+    }
+    final blockedBy = List.generate(n, (_) => <int>{});
+    for (int i = 0; i < n; i++) {
+      final a = arrows[i];
+      final d = a.direction.delta;
+      int r = a.path[0][0] + d[0], c = a.path[0][1] + d[1];
+      while (r >= 0 && r < gridSize && c >= 0 && c < gridSize) {
+        final o = owner[r * gridSize + c];
+        if (o != null && o != i) blockedBy[i].add(o);
+        r += d[0];
+        c += d[1];
+      }
+    }
+
+    var rep = List<int>.generate(n, (i) => i);
+    final base = _layerDepth(blockedBy, rep);
+    if (base == null) return 0; // board already cyclic — never pair on it
+
+    // Only arrows that are NOT free on move one may be paired.
+    final ids = <int>[
+      for (int i = 0; i < n; i++)
+        if (blockedBy[i].isNotEmpty) i
+    ];
+    if (ids.length < 2) return 0;
+
+    final minDist = (gridSize * 0.25).floor().clamp(2, 15);
+    // Early pair levels pick a mid-difficulty pair, later levels the hardest.
+    final double hardness = ((level - 16) / 300.0).clamp(0.0, 1.0);
+
+    final used = <int>{};
+    int made = 0;
+    for (int pn = 0; pn < want; pn++) {
+      final cands = <(double, int, int)>[];
+      for (int t = 0; t < 120; t++) {
+        final x = ids[rng.nextInt(ids.length)];
+        final y = ids[rng.nextInt(ids.length)];
+        if (x == y || used.contains(x) || used.contains(y)) continue;
+        final dist = (arrows[x].row - arrows[y].row).abs() +
+            (arrows[x].col - arrows[y].col).abs();
+        if (dist < minDist) continue;
+        // A partner's ray must not cross the other partner's body.
+        if (blockedBy[x].contains(y) || blockedBy[y].contains(x)) continue;
+        final union = <int>{...blockedBy[x], ...blockedBy[y]};
+        // Blockers in DIFFERENT regions force two separate clearing efforts.
+        int inter = 0;
+        for (final u in blockedBy[x]) {
+          if (blockedBy[y].contains(u)) inter++;
+        }
+        final symDiff = union.length - inter;
+        // CHAINED pairs: blockers that are themselves paired arrows mean this
+        // pair can only fire after another pair has fired.
+        int links = 0;
+        for (final u in union) {
+          if (used.contains(u)) links++;
+        }
+        final score = base[x] + base[y] + 0.5 * union.length +
+            0.5 * symDiff + 4.0 * links;
+        cands.add((score, x, y));
+      }
+      if (cands.isEmpty) continue;
+      cands.sort((a, b) => b.$1.compareTo(a.$1));
+
+      final start = ((1.0 - hardness) * (cands.length - 1) * 0.5).round();
+      for (int k = 0; k < cands.length; k++) {
+        final c = cands[(start + k) % cands.length];
+        final x = c.$2, y = c.$3;
+        final rep2 = List<int>.from(rep);
+        rep2[y] = x;
+        if (_layerDepth(blockedBy, rep2) == null) continue; // would deadlock
+        rep = rep2;
+        used..add(x)..add(y);
+        arrows[x] = arrows[x]
+            .copyWith(mechanic: SnakeMechanic.colorLock, colorGroup: made);
+        arrows[y] = arrows[y]
+            .copyWith(mechanic: SnakeMechanic.colorLock, colorGroup: made);
+        made++;
+        break;
+      }
+    }
+
+    // Safety net: same verifier criterion the pipeline already uses.
+    int valid = made;
+    while (valid > 0 &&
+        _hasColorLockDeadlock(arrows, gridSize, <String, OrphanDotType>{})) {
+      _demoteLastPair(arrows, valid - 1);
+      valid--;
+    }
+    return valid;
   }
 
   // ── Tutorial level builders ──────────────────────────────────────────────────
@@ -658,7 +1281,7 @@ class LevelGeneratorV2 {
 
     // Absorb isolated single empty cells into adjacent arrow tails
     if (type != LevelType.tutorial && occupied.length < mask.length) {
-      _absorbOrphans(arrows, occupied, occupiedPacked, mask);
+      _absorbOrphans(arrows, occupied, occupiedPacked, mask, gridSize);
     }
 
     if (arrows.isEmpty) return null;
@@ -959,6 +1582,18 @@ class LevelGeneratorV2 {
     final orphanMap = <String, OrphanDotType>{};
     for (final od in orphanDots) { orphanMap[od.key] = od.type; }
 
+    // PERF (behaviour-identical): a pair is only accepted when BOTH arrows have
+    // a fully clear exit ray. That property depends only on paths (which never
+    // change while pairing), so compute it once instead of rebuilding a
+    // whole-board cell set for every candidate pair. On a 100%-filled board
+    // most arrows are blocked, which previously made this O(arrows^2 * cells).
+    final Set<String> allCellsOnce = <String>{};
+    for (final a in arrows) {
+      for (final pt in a.path) { allCellsOnce.add('${pt[0]},${pt[1]}'); }
+    }
+    final List<bool> rayClear = List<bool>.generate(arrows.length,
+        (i) => _simulateExitClear(arrows[i], gridSize, allCellsOnce, orphanMap));
+
     // ── Edge vs Center arrow classification ──────────────────────────────────
     // Edge distance <= edgeThreshold is Edge; > edgeThreshold is Center.
     final edgeThreshold = (gridSize <= 12) ? 1 : (gridSize * 0.25).floor();
@@ -992,6 +1627,8 @@ class LevelGeneratorV2 {
       for (int c = 0; c < centerIndices.length; c++) {
         final ki = centerIndices[c];
         if (arrows[ki].mechanic != SnakeMechanic.standard) continue;
+
+        if (!rayClear[li] || !rayClear[ki]) continue;
 
         // ── Spatial separation across canvas ──────────────────────────────
         final zone1 = (arrows[li].row * 3 ~/ gridSize, arrows[li].col * 3 ~/ gridSize);
@@ -1061,6 +1698,7 @@ class LevelGeneratorV2 {
         for (int j = i + 1; j < allStdIndices.length; j++) {
           final ki = allStdIndices[j];
           if (arrows[ki].mechanic != SnakeMechanic.standard) continue;
+          if (!rayClear[li] || !rayClear[ki]) continue;
 
           final zone1 = (arrows[li].row * 3 ~/ gridSize, arrows[li].col * 3 ~/ gridSize);
           final zone2 = (arrows[ki].row * 3 ~/ gridSize, arrows[ki].col * 3 ~/ gridSize);
@@ -1125,6 +1763,7 @@ class LevelGeneratorV2 {
         for (int j = i + 1; j < allStdIndices.length; j++) {
           final ki = allStdIndices[j];
           if (arrows[ki].mechanic != SnakeMechanic.standard) continue;
+          if (!rayClear[li] || !rayClear[ki]) continue;
 
           final allCells = <String>{};
           for (final a in arrows) {
@@ -1788,33 +2427,129 @@ class LevelGeneratorV2 {
     return blocked;
   }
 
+  /// P1.5 — Iterative orphan absorption to a fixpoint (density increment #1).
+  ///
+  /// Replaces the original single-pass absorb. It keeps extending arrow tails
+  /// into adjacent empty cells until no further extension is possible. Chaining
+  /// single-cell extensions is what lifts coverage above the old one-shot pass.
+  ///
+  /// Solvability guard: an empty cell is absorbed only when it does NOT lie on
+  /// the current clear exit ray of any *other* arrow. Growing a body into
+  /// another arrow's clear exit would block that arrow and risk a deadlock.
+  /// The absorber's own exit is unaffected — we only grow the tail (head +
+  /// direction, which define the exit ray, never change) and the runtime
+  /// [_computeExitInfo] treats an arrow's own body as transparent
+  /// (`other.id == arrow.id` is skipped). The final solver verification
+  /// downstream remains the last safety net.
   static void _absorbOrphans(List<ArrowModel> arrows, Set<String> occupied,
-      Set<int> occupiedPacked, Set<String> mask) {
-    final orphans = mask.where((k) => !occupied.contains(k)).toList();
-    for (final cellKey in orphans) {
-      final parts = cellKey.split(',');
-      final r = int.parse(parts[0]), c = int.parse(parts[1]);
-      for (int i = 0; i < arrows.length; i++) {
-        final arrow = arrows[i];
-        final tail  = arrow.path.last;
-        final dist  = (tail[0] - r).abs() + (tail[1] - c).abs();
-        if (dist == 1) {
+      Set<int> occupiedPacked, Set<String> mask, int gridSize) {
+    bool pathHas(List<List<int>> path, int r, int c) {
+      for (final pt in path) {
+        if (pt[0] == r && pt[1] == c) return true;
+      }
+      return false;
+    }
+
+    /// True when (r,c) sits on [a]'s own forward exit line (collinear with the
+    /// head in [a]'s direction). Growing [a] into such a cell never blocks [a].
+    bool onOwnRay(ArrowModel a, int r, int c) {
+      if (a.path.length < 2) return false;
+      final d = a.direction.delta;
+      int nr = a.path[0][0] + d[0], nc = a.path[0][1] + d[1];
+      int guard = 0;
+      while (nr >= 0 && nr < gridSize && nc >= 0 && nc < gridSize &&
+          guard++ <= gridSize) {
+        if (nr == r && nc == c) return true;
+        nr += d[0];
+        nc += d[1];
+      }
+      return false;
+    }
+
+    /// How many arrows' clear exit rays currently pass through each empty cell.
+    /// An arrow's own body is transparent to its ray (runtime skips self), so we
+    /// trace through it and only stop at another arrow's body. Recomputed once
+    /// per sweep; it only shrinks as we absorb (occupancy grows, truncating
+    /// rays), so a stale value is always a safe over-estimate.
+    Map<int, int> computeRayCounts() {
+      final counts = <int, int>{};
+      for (final a in arrows) {
+        if (a.path.length < 2) continue;
+        final own = <int>{};
+        for (final pt in a.path) {
+          own.add(pt[0] * 1000 + pt[1]);
+        }
+        final d = a.direction.delta;
+        int nr = a.path[0][0] + d[0], nc = a.path[0][1] + d[1];
+        while (nr >= 0 && nr < gridSize && nc >= 0 && nc < gridSize) {
+          final pk = nr * 1000 + nc;
+          if (own.contains(pk)) {
+            // own body — transparent, keep tracing
+          } else if (occupiedPacked.contains(pk)) {
+            break; // another arrow blocks here; ray ends
+          } else {
+            counts[pk] = (counts[pk] ?? 0) + 1;
+          }
+          nr += d[0];
+          nc += d[1];
+        }
+      }
+      return counts;
+    }
+
+    bool changed = true;
+    while (changed) {
+      changed = false;
+      final rayCounts = computeRayCounts();
+
+      // Snapshot current orphans for this sweep (packed ints).
+      final orphans = <int>[];
+      for (final k in mask) {
+        final comma = k.indexOf(',');
+        final r = int.parse(k.substring(0, comma));
+        final c = int.parse(k.substring(comma + 1));
+        final pk = r * 1000 + c;
+        if (!occupiedPacked.contains(pk)) orphans.add(pk);
+      }
+
+      for (final pk in orphans) {
+        if (occupiedPacked.contains(pk)) continue;
+
+        final r = pk ~/ 1000;
+        final c = pk % 1000;
+
+        for (int i = 0; i < arrows.length; i++) {
+          final arrow = arrows[i];
+          final tail = arrow.path.last;
+          if ((tail[0] - r).abs() + (tail[1] - c).abs() != 1) continue;
+
+          // Solvability guard: skip if this cell lies on another arrow's clear
+          // exit ray (its own ray does not count — self is transparent).
+          int cnt = rayCounts[pk] ?? 0;
+          if (cnt > 0 && onOwnRay(arrow, r, c)) cnt -= 1;
+          if (cnt > 0) continue;
+
+          // Loop / 2x2-square guard: the new tail cell must not be
+          // orthogonally adjacent to any of THIS arrow's own body cells other
+          // than the current tail.
           bool wouldFormLoop = false;
           if (arrow.path.length >= 3) {
-            for (final nb in [[-1,0],[1,0],[0,-1],[0,1]]) {
+            for (final nb in const [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
               final adjR = r + nb[0], adjC = c + nb[1];
               if (adjR == tail[0] && adjC == tail[1]) continue;
-              for (final pt in arrow.path) {
-                if (pt[0] == adjR && pt[1] == adjC) { wouldFormLoop = true; break; }
+              if (pathHas(arrow.path, adjR, adjC)) {
+                wouldFormLoop = true;
+                break;
               }
-              if (wouldFormLoop) break;
             }
           }
           if (wouldFormLoop) continue;
+
           final newPath = List<List<int>>.from(arrow.path)..add([r, c]);
           arrows[i] = arrow.copyWith(path: newPath);
-          occupied.add(cellKey);
-          occupiedPacked.add(r * 1000 + c);
+          occupied.add('$r,$c');
+          occupiedPacked.add(pk);
+          changed = true;
           break;
         }
       }
@@ -1824,7 +2559,9 @@ class LevelGeneratorV2 {
   // ── Greedy solver (identical to V1) ────────────────────────────────────────
 
   static List<String>? _greedySolveWithMap(
-      int gridSize, List<ArrowModel> arrows, Map<int, OrphanDotType> orphanMap) {
+      int gridSize, List<ArrowModel> arrows, Map<int, OrphanDotType> orphanMap,
+      {List<int>? roundsOut}) {
+    int rounds = 0;
     final board = Uint16List(gridSize * gridSize);
     for (int i = 0; i < arrows.length; i++) {
       for (final pt in arrows[i].path) {
@@ -1894,6 +2631,7 @@ class LevelGeneratorV2 {
     final seenGroups  = <int>{};
     while (madeProgress && remaining > 0) {
       madeProgress = false;
+      rounds++;
       seenGroups.clear();
       for (int i = 0; i < arrows.length; i++) {
         if (!active[i]) continue;
@@ -1921,6 +2659,7 @@ class LevelGeneratorV2 {
         }
       }
     }
+    roundsOut?.add(rounds);
     return remaining == 0 ? order : null;
   }
 

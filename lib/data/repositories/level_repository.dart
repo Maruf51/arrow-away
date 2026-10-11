@@ -13,6 +13,13 @@ LevelModel _generateLevelIsolate(int levelNumber) {
   return LevelGeneratorV2.generateLevel(levelNumber);
 }
 
+LevelModel _generateSandboxLevelIsolate(Map<String, int> args) {
+  return LevelGeneratorV2.generateLevel(
+    args['level']!,
+    gridSizeOverride: args['gridSize'],
+  );
+}
+
 /// Caches generated levels and provides access by level number.
 ///
 /// Level loading priority:
@@ -176,6 +183,14 @@ class LevelRepository {
       await Future.delayed(const Duration(milliseconds: 16));
     }
     return _cache[levelNumber]!;
+  }
+
+  /// Generate a custom-size level without placing it in the campaign cache.
+  Future<LevelModel> generateSandboxLevelAsync(int levelNumber, int gridSize) {
+    return compute(_generateSandboxLevelIsolate, {
+      'level': levelNumber,
+      'gridSize': gridSize,
+    });
   }
 
   /// True if [levelNumber] is instantly available (no generation needed).
