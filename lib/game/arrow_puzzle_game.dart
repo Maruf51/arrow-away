@@ -17,6 +17,7 @@ class ArrowPuzzleGame extends FlameGame {
   final void Function() onLevelComplete;
   final void Function() onGameOver;
   final void Function() onLifeLost;
+  Rect? _exitViewportSceneRect;
 
   ArrowPuzzleGame({
     required this.level,
@@ -38,6 +39,10 @@ class ArrowPuzzleGame extends FlameGame {
       gridPixelSize: gridSize,
       position: Vector2(gridX, gridY),
     );
+    final viewport = _exitViewportSceneRect;
+    if (viewport != null) {
+      gridComponent!.updateExitViewportSceneRect(viewport);
+    }
 
     add(gridComponent!);
   }
@@ -51,7 +56,16 @@ class ArrowPuzzleGame extends FlameGame {
     if (gridComponent != null) {
       gridComponent!.position = Vector2(gridX, gridY);
       gridComponent!.resize(gridSize);
+      final viewport = _exitViewportSceneRect;
+      if (viewport != null) {
+        gridComponent!.updateExitViewportSceneRect(viewport);
+      }
     }
+  }
+
+  void updateExitViewportSceneRect(Rect sceneRect) {
+    _exitViewportSceneRect = sceneRect;
+    gridComponent?.updateExitViewportSceneRect(sceneRect);
   }
 
   (double gridSize, double gridX, double gridY) _calcLayout(Vector2 screenSize) {

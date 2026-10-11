@@ -10,6 +10,7 @@ import 'screens/main_menu/main_menu_screen.dart';
 import 'screens/level_select/level_select_screen.dart';
 import 'screens/game/game_screen.dart';
 import 'screens/game_over/game_over_screen.dart';
+import 'screens/daily_challenge/daily_challenge_screen.dart';
 import 'screens/settings/settings_screen.dart';
 import 'widgets/fps_counter.dart';
 
@@ -77,6 +78,7 @@ class ArrowPuzzleApp extends StatelessWidget {
         '/levels': (_) => const LevelSelectScreen(),
         '/game': (_) => const GameScreen(),
         '/game_over': (_) => const GameOverScreen(),
+        '/daily_challenge': (_) => const DailyChallengeScreen(),
         '/settings': (_) => const SettingsScreen(),
       },
     );

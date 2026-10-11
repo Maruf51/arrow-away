@@ -74,7 +74,12 @@ class LevelGeneratorV2 {
   // ── Entry point ─────────────────────────────────────────────────────────────
 
   /// Generate a level. Seeded by levelNumber for determinism.
-  static LevelModel generateLevel(int levelNumber, {int? gridSizeOverride}) {
+  static LevelModel generateLevel(
+    int levelNumber, {
+    int? gridSizeOverride,
+    int? seedOverride,
+    bool quickGeneration = false,
+  }) {
     // ── Tutorial levels — hand-authored, straight arrows only ─────────────────
     // ┌─────────────────────────────────────────────────────────────────────────┐
     // │  TUTORIAL RULE: All arrow paths in levels 1–3 are STRAIGHT (no bends). │
@@ -82,7 +87,12 @@ class LevelGeneratorV2 {
     // │  Bent paths via _growPath() are used only from level 4 onward.         │
     // └─────────────────────────────────────────────────────────────────────────┘
     if (levelNumber <= 3 && gridSizeOverride != null && gridSizeOverride != 10) {
-      return generateLevel(4, gridSizeOverride: gridSizeOverride)
+      return generateLevel(
+        4,
+        gridSizeOverride: gridSizeOverride,
+        seedOverride: seedOverride,
+        quickGeneration: quickGeneration,
+      )
           .copyWith(levelNumber: levelNumber);
     }
     if (levelNumber == 1) return _buildTutorial1();
@@ -99,7 +109,7 @@ class LevelGeneratorV2 {
       if (levelNumber == 437) gridSize = 36;
     }
 
-    final seed = levelNumber * 7919 + 314159;
+    final seed = seedOverride ?? levelNumber * 7919 + 314159;
     final rng  = Random(seed);
 
     final maskShape = _shapeFor(type, rng, levelNumber);
@@ -116,6 +126,8 @@ class LevelGeneratorV2 {
         mask: mask,
         type: type,
         maskShape: maskShape,
+        seedOverride: seedOverride,
+        quickGeneration: quickGeneration,
       );
       if (full != null) return full;
     }
@@ -123,7 +135,9 @@ class LevelGeneratorV2 {
     LevelModel? level;
 
     final bool isLargeGrid = gridSize > 20;
-    final int maxAttempts  = isLargeGrid
+    final int maxAttempts = quickGeneration
+      ? 8
+      : isLargeGrid
         ? (type == LevelType.normal ? 80 : 120)
         : 80;
 
@@ -262,14 +276,18 @@ class LevelGeneratorV2 {
     required Set<String> mask,
     required LevelType type,
     required MaskShape maskShape,
+    int? seedOverride,
+    bool quickGeneration = false,
   }) {
     final fp = _fullParamsFor(levelNumber, type, gridSize);
-    final int baseSeed = levelNumber * 7919 + 314159;
+    final int baseSeed = seedOverride ?? levelNumber * 7919 + 314159;
+    final candidateCount = quickGeneration ? 1 : fp.candidates;
 
     final results = <FullBoardResult>[];
-    for (int v = 0; v < fp.candidates; v++) {
+    for (int v = 0; v < candidateCount; v++) {
       FullBoardResult? r;
-      for (int retry = 0; retry < 3 && r == null; retry++) {
+      final retryLimit = quickGeneration ? 1 : 3;
+      for (int retry = 0; retry < retryLimit && r == null; retry++) {
         final rng = Random(baseSeed + (v + 1) * 104729 + retry * 1299709);
         r = FullBoardGenerator.generate(
           gridSize: gridSize,
@@ -312,6 +330,18 @@ class LevelGeneratorV2 {
       }
     }
     return null;
+  }
+
+  /// Fast deterministic seed-driven hard board for daily challenges.
+  /// It intentionally skips multi-candidate difficulty ranking and large retry
+  /// budgets so first-open generation stays responsive.
+  static LevelModel generateDailyChallenge(int seed) {
+    return generateLevel(
+      480,
+      gridSizeOverride: 21,
+      seedOverride: seed,
+      quickGeneration: true,
+    );
   }
 
   static LevelModel? _finishFullLevel({

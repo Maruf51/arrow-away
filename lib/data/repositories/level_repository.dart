@@ -20,6 +20,10 @@ LevelModel _generateSandboxLevelIsolate(Map<String, int> args) {
   );
 }
 
+LevelModel _generateDailyLevelIsolate(int seed) {
+  return LevelGeneratorV2.generateDailyChallenge(seed);
+}
+
 /// Caches generated levels and provides access by level number.
 ///
 /// Level loading priority:
@@ -30,6 +34,7 @@ LevelModel _generateSandboxLevelIsolate(Map<String, int> args) {
 class LevelRepository {
   final SharedPreferences? _prefs;
   final Map<int, LevelModel> _cache = {};
+  final Map<String, LevelModel> _dailyChallengeCache = {};
   final Set<int> _generating = {};
 
   LevelBinaryDecoder? _binaryDecoder;
@@ -191,6 +196,36 @@ class LevelRepository {
       'level': levelNumber,
       'gridSize': gridSize,
     });
+  }
+
+  Future<LevelModel> getDailyChallengeLevelAsync({
+    required String dateKey,
+    required int seed,
+  }) async {
+    final cached = getCachedDailyChallengeLevel(dateKey);
+    if (cached != null) return cached;
+
+    final level = await compute(_generateDailyLevelIsolate, seed);
+    _dailyChallengeCache[dateKey] = level;
+    await _prefs?.setString(
+      'daily_challenge_level_$dateKey',
+      jsonEncode(level.toJson()),
+    );
+    return level;
+  }
+
+  LevelModel? getCachedDailyChallengeLevel(String dateKey) {
+    final cached = _dailyChallengeCache[dateKey];
+    if (cached != null) return cached;
+    final saved = _prefs?.getString('daily_challenge_level_$dateKey');
+    if (saved == null) return null;
+    try {
+      final level = LevelModel.fromJson(jsonDecode(saved) as Map<String, dynamic>);
+      _dailyChallengeCache[dateKey] = level;
+      return level;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// True if [levelNumber] is instantly available (no generation needed).

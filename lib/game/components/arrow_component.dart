@@ -61,6 +61,8 @@ class ArrowComponent extends PositionComponent with HasPaint {
   List<Offset>? _previewPath; // pixel coords from head-step-1 → off-screen
   double _previewPhase = 0.0; // marching-ants animation phase (0–1)
   double _flowPhase = 0.0; // neon-flow liquid advance (0–1 of body arc length)
+  double _hintRemaining = 0.0;
+  final Paint _hintPaint = Paint()..style = PaintingStyle.stroke;
 
   // ── Exit state ──────────────────────────────────────────────────────────────────
   bool _isExiting = false;
@@ -82,6 +84,8 @@ class ArrowComponent extends PositionComponent with HasPaint {
 
   /// Pre-built deflected exit track (farthest → head), null = straight exit
   List<Offset>? _deflectedExtension;
+  Rect? _exitViewportSceneRect;
+  Offset _gridSceneOffset = Offset.zero;
 
   // ── Caching for static paths and coordinates ─────────────────────────────
   List<Offset>? _cachedPathPx;
@@ -161,11 +165,20 @@ class ArrowComponent extends PositionComponent with HasPaint {
     _invalidateCache();
   }
 
+  void updateExitViewport(Rect sceneRect, Offset gridSceneOffset) {
+    _exitViewportSceneRect = sceneRect;
+    _gridSceneOffset = gridSceneOffset;
+  }
+
   // ── Hit test: tap anywhere along the arrow body ───────────────────────────
 
   /// True while the arrow is sliding off the board. Exiting arrows are no
   /// longer interactive, so the grid skips them when resolving a tap.
   bool get isExiting => _isExiting;
+
+  void showHint() {
+    _hintRemaining = 3.2;
+  }
 
   @override
   bool containsLocalPoint(Vector2 point) {
@@ -396,12 +409,33 @@ class ArrowComponent extends PositionComponent with HasPaint {
 
     if (!hasDeflection) return null;
 
-    // Pad the exit track a couple of cells past the board edge so the tail
-    // fully clears the grid — kept at 2 cells (was 6) so the arrow doesn't
-    // keep flying over empty space after it has visibly left the board.
-    for (int i = 0; i <= 1; i++) {
-      pts.add(Offset(
-          (nc + d[1] * i + 0.5) * cellSize, (nr + d[0] * i + 0.5) * cellSize));
+    final viewport = _exitViewportSceneRect;
+    if (viewport == null) {
+      for (int i = 0; i <= 1; i++) {
+        pts.add(Offset(
+            (nc + d[1] * i + 0.5) * cellSize,
+            (nr + d[0] * i + 0.5) * cellSize));
+      }
+    } else {
+      Offset localCenter(int row, int col) =>
+          Offset((col + 0.5) * cellSize, (row + 0.5) * cellSize) +
+          _gridSceneOffset;
+      bool isPastViewport(int row, int col) {
+        final center = localCenter(row, col);
+        return switch (currentDir) {
+          ArrowDirection.up => center.dy < viewport.top,
+          ArrowDirection.down => center.dy > viewport.bottom,
+          ArrowDirection.left => center.dx < viewport.left,
+          ArrowDirection.right => center.dx > viewport.right,
+        };
+      }
+
+      while (!isPastViewport(nr, nc)) {
+        pts.add(Offset((nc + 0.5) * cellSize, (nr + 0.5) * cellSize));
+        nr += d[0];
+        nc += d[1];
+      }
+      pts.add(Offset((nc + 0.5) * cellSize, (nr + 0.5) * cellSize));
     }
 
     return pts.reversed.toList(); // farthest → closest to head
@@ -418,11 +452,45 @@ class ArrowComponent extends PositionComponent with HasPaint {
   /// (the part the player actually watches) is unchanged, and exit speed
   /// stays constant because [_exitDuration] is derived from the real track
   /// length.
-  int _straightExtensionCount() => straightExtensionCells(
-        head: arrowModel.path[0],
-        delta: arrowModel.direction.delta,
-        gridSize: gameState.level.gridSize,
-      );
+  int _straightExtensionCount() {
+    final boardClearance = straightExtensionCells(
+      head: arrowModel.path[0],
+      delta: arrowModel.direction.delta,
+      gridSize: gameState.level.gridSize,
+    );
+    final viewport = _exitViewportSceneRect;
+    if (viewport == null) return boardClearance;
+
+    final head = arrowModel.path[0];
+    final headCenter = Offset(
+          (head[1] + 0.5) * cellSize,
+          (head[0] + 0.5) * cellSize,
+        ) +
+        _gridSceneOffset;
+    final viewportClearance = viewportExtensionCells(
+      headCenter: headCenter,
+      direction: arrowModel.direction,
+      cellSize: cellSize,
+      viewport: viewport,
+    );
+    return math.max(boardClearance, viewportClearance);
+  }
+
+  @visibleForTesting
+  static int viewportExtensionCells({
+    required Offset headCenter,
+    required ArrowDirection direction,
+    required double cellSize,
+    required Rect viewport,
+  }) {
+    final distance = switch (direction) {
+      ArrowDirection.up => headCenter.dy - viewport.top,
+      ArrowDirection.down => viewport.bottom - headCenter.dy,
+      ArrowDirection.left => headCenter.dx - viewport.left,
+      ArrowDirection.right => viewport.right - headCenter.dx,
+    };
+    return (distance / cellSize).ceil() + 1;
+  }
 
   /// Pure form of [_straightExtensionCount] (extracted for tests): cells
   /// from the head to one cell beyond the board edge in [delta]'s direction,
@@ -560,6 +628,7 @@ class ArrowComponent extends PositionComponent with HasPaint {
   @override
   void update(double dt) {
     super.update(dt);
+    _hintRemaining = (_hintRemaining - dt).clamp(0.0, 3.2);
 
     // ── Long-press accumulator ──────────────────────────────────────────────
     if (_isTouchDown && !_isAnimating && !_isExiting) {
@@ -745,6 +814,19 @@ class ArrowComponent extends PositionComponent with HasPaint {
     final sw = cellSize * (_usesLiquidNeonSkin ? 0.44 : 0.30);
 
     canvas.save();
+
+    if (_hintRemaining > 0 && !isAnimatingNow) {
+      final phase = 3.2 - _hintRemaining;
+      final pulse = (math.sin(phase * math.pi * 2) + 1) / 2;
+      _hintPaint
+        ..color = const Color(0xFFFFD45E).withValues(alpha: 0.55 + pulse * 0.4)
+        ..strokeWidth = cellSize * 0.08;
+      canvas.drawCircle(
+        pts.first,
+        cellSize * (0.62 + pulse * 0.18),
+        _hintPaint,
+      );
+    }
 
     // ── 6. Draw body ──────────────────────────────────────────────────────
     final Path bodyPath;

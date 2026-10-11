@@ -37,6 +37,7 @@ class GridComponent extends PositionComponent with TapCallbacks {
   bool _isRecachingDotGrid = false;
   int _dotGridCacheGeneration = 0;
   bool _isDarkCached = AppColors.isDark;
+  Rect? _exitViewportSceneRect;
 
   // ── Release-wave pop animation (arrow-escape "release" effect) ──────────
   // cell key "r,c" -> elapsed seconds since pop started
@@ -126,6 +127,17 @@ class GridComponent extends PositionComponent with TapCallbacks {
   /// pass skips keys not present in the mask, so empty cells never pop).
   void triggerCellPop(int row, int col) {
     _poppingCells['$row,$col'] = 0.0;
+  }
+
+  void updateExitViewportSceneRect(Rect sceneRect) {
+    _exitViewportSceneRect = sceneRect;
+    for (final arrow in _arrowComponents.values) {
+      arrow.updateExitViewport(sceneRect, Offset(position.x, position.y));
+    }
+  }
+
+  void showHintArrow(String arrowId) {
+    _arrowComponents[arrowId]?.showHint();
   }
 
   // ── Tap routing ─────────────────────────────────────────────────────────────
@@ -258,6 +270,10 @@ class GridComponent extends PositionComponent with TapCallbacks {
         gameState: gameState,
         levelType: _levelType,
       )..position = Vector2(0, 0);
+      final viewport = _exitViewportSceneRect;
+      if (viewport != null) {
+        comp.updateExitViewport(viewport, Offset(position.x, position.y));
+      }
       _arrowComponents[arrow.id] = comp;
       add(comp);
     }

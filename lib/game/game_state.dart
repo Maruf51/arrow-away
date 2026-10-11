@@ -9,12 +9,15 @@ class GameState extends ChangeNotifier {
   // ── Level ─────────────────────────────────────────────────────────────────────
   late LevelModel _currentLevel;
   late List<ArrowModel> _arrows;
-  int _lives = AppConstants.maxLives;
+  int _lives = AppConstants.maxGameplayLives;
   int _movesUsed = 0;
   int _livesLost = 0;
   bool _isComplete = false;
   bool _isGameOver = false;
   bool _isDeadlocked = false;
+  DateTime? _lastArrowExitAt;
+  int _tapStreak = 0;
+  int _maxTapStreak = 0;
 
   // Live orphan dot map (dots are removed when consumed by an exiting arrow)
   late Map<String, OrphanDotType> _orphanDots;
@@ -59,6 +62,12 @@ class GameState extends ChangeNotifier {
   int get lives => _lives;
   int get movesUsed => _movesUsed;
   int get livesLost => _livesLost;
+  int get visibleTapStreak => _tapStreak >= 2 &&
+          _lastArrowExitAt != null &&
+          DateTime.now().difference(_lastArrowExitAt!) <= const Duration(seconds: 2)
+      ? _tapStreak
+      : 0;
+  int get maxTapStreak => _maxTapStreak;
   bool get isComplete => _isComplete;
   bool get isGameOver => _isGameOver;
   bool get isDeadlocked => _isDeadlocked;
@@ -135,6 +144,22 @@ class GameState extends ChangeNotifier {
     return _computeExitInfo(arrow).blocked;
   }
 
+  String? findHintArrowId() {
+    for (final arrow in _arrows) {
+      if (arrow.state == ArrowState.idle && !isArrowBlocked(arrow.id)) {
+        return arrow.id;
+      }
+    }
+    return null;
+  }
+
+  List<List<int>>? arrowPathFor(String arrowId) {
+    for (final arrow in _arrows) {
+      if (arrow.id == arrowId) return arrow.path;
+    }
+    return null;
+  }
+
   List<OrphanDot> getConsumedDotsForArrow(String arrowId) {
     return _consumedDotsByArrow[arrowId] ?? [];
   }
@@ -206,6 +231,7 @@ class GameState extends ChangeNotifier {
 
     // ── Clear: arrow exits ──────────────────────────────────────────
     _arrows[index] = arrow.copyWith(state: ArrowState.sliding);
+    _registerSuccessfulTap();
     _recordConsumedDots(arrowId, exitInfo.consumed);
     // Consume orphan dots along the exit path
     for (final k in exitInfo.consumed) _orphanDots.remove(k);
@@ -218,6 +244,8 @@ class GameState extends ChangeNotifier {
   }
 
   TapResult _handleBlocked(int index, ArrowModel arrow, String arrowId) {
+    _tapStreak = 0;
+    _lastArrowExitAt = null;
     _arrows[index] = arrow.copyWith(state: ArrowState.blocked);
     _lives--;
     _livesLost++;
@@ -244,6 +272,8 @@ class GameState extends ChangeNotifier {
   }
 
   TapResult _handleGroupBlocked(int grp, List<ArrowModel> groupArrows) {
+    _tapStreak = 0;
+    _lastArrowExitAt = null;
     // Both arrows enter the blocked state, a life is lost.
     for (final arrow in groupArrows) {
       final index = _arrows.indexWhere((a) => a.id == arrow.id);
@@ -282,12 +312,27 @@ class GameState extends ChangeNotifier {
         _arrows[index] = arrow.copyWith(state: ArrowState.sliding);
       }
     }
+    _registerSuccessfulTap();
     notifyListeners();
 
     // Play exit sound
     AudioManager.instance.playArrowExit();
 
     return TapResult.exited;
+  }
+
+  void _registerSuccessfulTap() {
+    final now = DateTime.now();
+    if (_lastArrowExitAt == null ||
+        now.difference(_lastArrowExitAt!) > const Duration(seconds: 2)) {
+      _tapStreak = 1;
+    } else {
+      _tapStreak++;
+    }
+    _lastArrowExitAt = now;
+    if (_tapStreak >= 2 && _tapStreak > _maxTapStreak) {
+      _maxTapStreak = _tapStreak;
+    }
   }
 
   /// Checks whether the arrow's exit path is clear (possibly with deflections
@@ -348,18 +393,21 @@ class GameState extends ChangeNotifier {
     _arrows = _currentLevel.arrows.map((a) => a.copyWith(state: ArrowState.idle)).toList();
     _orphanDots = {for (final od in _currentLevel.orphanDots) od.key: od.type};
     _consumedDotsByArrow.clear();
-    _lives = AppConstants.maxLives;
+    _lives = AppConstants.maxGameplayLives;
     _movesUsed = 0;
     _livesLost = 0;
     _isComplete = false;
     _isGameOver = false;
     _isDeadlocked = false;
+    _lastArrowExitAt = null;
+    _tapStreak = 0;
+    _maxTapStreak = 0;
     _clearedColorGroups.clear();
     notifyListeners();
   }
 
   void restoreLife() {
-    if (_lives < AppConstants.maxLives) {
+    if (_lives < AppConstants.maxGameplayLives) {
       _lives++;
       if (_isGameOver && _lives > 0) {
         _isGameOver = false;

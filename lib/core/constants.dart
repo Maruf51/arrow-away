@@ -17,7 +17,28 @@ class AppConstants {
   static const int tutorialLevels = 3;
 
   // Lives
-  static const int maxLives = 3;
+  static const int maxLives = 5;
+  static const int maxGameplayLives = 3;
+  static const Duration heartRegenerationInterval = Duration(minutes: 10);
+  static const int heartCostSingle = 80;
+  static const int heartCostFullRefill = 250;
+  static const int hintCostSingle = 100;
+  static const int hintCostPack3 = 250;
+  static const int dailyFreeCoins = 20;
+  /// 7-day cycle rewards (0-indexed: [coins, hints, hearts]).
+  /// Ramp is gradual; day 7 is the grand prize at ~4x day 1.
+  static const List<List<int>> dailyStreakRewards = [
+    [15, 0, 0], // Day 1
+    [20, 0, 0], // Day 2
+    [25, 1, 0], // Day 3
+    [30, 0, 0], // Day 4
+    [35, 1, 0], // Day 5
+    [40, 0, 0], // Day 6
+    [60, 2, 2], // Day 7 — grand prize
+  ];
+  /// Bonus for watching a rewarded ad on the streak card.
+  static const int dailyStreakAdBonusCoins = 15;
+  static const int dailyStreakAdBonusHints = 1;
 
   // Special level cadence
   static const int bossLevelEvery = 3; // Every 3rd level is BOSS

@@ -20,10 +20,10 @@ import '../../game/arrow_puzzle_game.dart';
 import '../../game/game_state.dart';
 
 import '../../widgets/arrow_line.dart';
+import '../../widgets/resource_offer_dialog.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/audio_manager.dart';
 import '../../widgets/ribbon_header.dart';
-import '../../widgets/shop_dialog.dart';
 import '../main_menu/main_menu_screen.dart' show HowToPlayDialog;
 
 class GameScreen extends StatefulWidget {
@@ -33,7 +33,8 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
+class _GameScreenState extends State<GameScreen>
+  with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   late LevelModel _level;
   late ArrowPuzzleGame _game;
   GameState? _gameState;
@@ -42,14 +43,21 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   bool _showingComplete = false;
   bool _showingDeadlock = false;
   bool _inspectingDeadlock = false;
-  int _lives = AppConstants.maxLives;
+  int _lives = AppConstants.maxGameplayLives;
+  int _completionCoinReward = 0;
   int? _loadedLevelNum;
   int? _loadedSandboxGridSize;
   bool _isSandbox = false;
+  bool _isDailyChallenge = false;
+  String? _dailyChallengeDateKey;
+  int? _dailyChallengeSeed;
+  String? _loadedDailyChallengeDateKey;
   bool _isLoadingLevel = false; // true while level is being generated async
+  bool _isEntryGatePending = false;
 
   // Timer fields
   Timer? _levelTimer;
+  Timer? _streakResetTimer;
   int _timeRemaining = 0;
   int _totalTime = 0;
   bool _isTimeoutState = false;
@@ -57,6 +65,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   bool _isAppBackgrounded = false;
 
   late final TransformationController _transformationController;
+  late final AnimationController _autoZoomController;
+  Animation<Matrix4>? _autoZoomAnimation;
+  Size? _gameViewportSize;
+  int? _autoZoomScheduledLevel;
 
   @override
   void initState() {
@@ -65,6 +77,18 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     _confettiController =
         ConfettiController(duration: const Duration(seconds: 4));
     _transformationController = TransformationController();
+    _autoZoomController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 850),
+    )..addListener(() {
+        final animation = _autoZoomAnimation;
+        if (animation == null) return;
+        _transformationController.value = animation.value;
+        final viewportSize = _gameViewportSize;
+        if (viewportSize != null) {
+          _updateExitViewportSceneRect(viewportSize);
+        }
+      });
   }
 
   @override
@@ -74,17 +98,64 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final levelNum = args?['level'] as int? ?? 1;
     final sandboxGridSize = args?['sandboxGridSize'] as int?;
+    _dailyChallengeDateKey = args?['dailyChallengeDateKey'] as String?;
+    _dailyChallengeSeed = args?['dailyChallengeSeed'] as int?;
+    _isDailyChallenge = _dailyChallengeDateKey != null;
     _isSandbox = sandboxGridSize != null;
     if (_loadedLevelNum != levelNum ||
-        _loadedSandboxGridSize != sandboxGridSize) {
+        _loadedSandboxGridSize != sandboxGridSize ||
+        _loadedDailyChallengeDateKey != _dailyChallengeDateKey) {
       _loadedLevelNum = levelNum;
       _loadedSandboxGridSize = sandboxGridSize;
-      _loadLevelAsync(levelNum, sandboxGridSize: sandboxGridSize);
+      _loadedDailyChallengeDateKey = _dailyChallengeDateKey;
+      _loadLevelAsync(
+        levelNum,
+        sandboxGridSize: sandboxGridSize,
+        dailyChallengeSeed: _dailyChallengeSeed,
+        dailyChallengeDateKey: _dailyChallengeDateKey,
+      );
     }
   }
 
-  Future<void> _loadLevelAsync(int levelNum, {int? sandboxGridSize}) async {
+  Future<void> _loadLevelAsync(
+    int levelNum, {
+    int? sandboxGridSize,
+    int? dailyChallengeSeed,
+    String? dailyChallengeDateKey,
+  }) async {
     final levelRepo = context.read<LevelRepository>();
+    _isEntryGatePending = true;
+
+    if (dailyChallengeSeed != null && dailyChallengeDateKey != null) {
+      final cachedDailyLevel =
+          levelRepo.getCachedDailyChallengeLevel(dailyChallengeDateKey);
+      if (cachedDailyLevel != null) {
+        _level = cachedDailyLevel;
+        _initGame();
+        unawaited(_verifyEntryHearts());
+        return;
+      }
+      if (mounted) setState(() => _isLoadingLevel = true);
+      try {
+        final level = await levelRepo.getDailyChallengeLevelAsync(
+          dateKey: dailyChallengeDateKey,
+          seed: dailyChallengeSeed,
+        );
+        if (!mounted) return;
+        _level = level;
+        _initGame();
+        setState(() => _isLoadingLevel = false);
+        unawaited(_verifyEntryHearts());
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _isLoadingLevel = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not generate today\'s challenge.')),
+        );
+        Navigator.of(context).pop();
+      }
+      return;
+    }
 
     if (sandboxGridSize != null) {
       if (mounted) setState(() => _isLoadingLevel = true);
@@ -97,11 +168,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         _level = level;
         _initGame();
         setState(() => _isLoadingLevel = false);
+        unawaited(_verifyEntryHearts());
       } catch (_) {
         if (!mounted) return;
         _level = levelRepo.getLevel(levelNum);
         _initGame();
         setState(() => _isLoadingLevel = false);
+        unawaited(_verifyEntryHearts());
       }
       return;
     }
@@ -110,6 +183,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     if (levelRepo.isCached(levelNum)) {
       _level = levelRepo.getLevel(levelNum);
       _initGame();
+      unawaited(_verifyEntryHearts());
       // Pre-warm next levels off the UI thread
       levelRepo.preGenerateRangeAsync(levelNum + 1, 5);
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -128,6 +202,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       _level = level;
       _initGame();
       setState(() => _isLoadingLevel = false);
+      unawaited(_verifyEntryHearts());
 
       // Pre-warm next levels off the UI thread
       levelRepo.preGenerateRangeAsync(levelNum + 1, 5);
@@ -141,15 +216,36 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       _level = levelRepo.getLevel(levelNum);
       _initGame();
-      if (mounted) setState(() => _isLoadingLevel = false);
+      if (mounted) {
+        setState(() => _isLoadingLevel = false);
+        unawaited(_verifyEntryHearts());
+      }
     }
   }
 
+  Future<void> _verifyEntryHearts() async {
+    final progress = context.read<ProgressRepository>();
+    await progress.refreshHearts();
+    if (!mounted) return;
+    if (!progress.hasLives) {
+      final boughtHeart = await _showHeartRequiredDialog();
+      if (!mounted) return;
+      if (!boughtHeart) {
+        Navigator.of(context).pop();
+        return;
+      }
+    }
+    if (mounted) setState(() => _isEntryGatePending = false);
+  }
+
   void _initGame() {
-    _lives = AppConstants.maxLives;
+    _lives = AppConstants.maxGameplayLives;
     _showingGameOver = false;
     _showingDeadlock = false;
     _inspectingDeadlock = false;
+    _autoZoomController.stop();
+    _autoZoomAnimation = null;
+    _autoZoomScheduledLevel = null;
     _transformationController.value = Matrix4.identity();
     final progress = context.read<ProgressRepository>();
     final skin = progress.equippedSkin;
@@ -176,8 +272,67 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     _resetTimerForLevel();
   }
 
+  void _updateExitViewportSceneRect(Size viewportSize) {
+    if (!_isLevelReady) return;
+    final sceneTopLeft =
+        _transformationController.toScene(Offset.zero);
+    final sceneBottomRight = _transformationController.toScene(
+      Offset(viewportSize.width, viewportSize.height),
+    );
+    _game.updateExitViewportSceneRect(
+      Rect.fromPoints(sceneTopLeft, sceneBottomRight),
+    );
+  }
+
+  void _scheduleAutoZoom(Size viewportSize) {
+    _gameViewportSize = viewportSize;
+    _updateExitViewportSceneRect(viewportSize);
+
+    final shouldZoom = _level.gridSize >= 20 || _level.totalArrows >= 80;
+    if (!shouldZoom || _autoZoomScheduledLevel == _level.levelNumber) return;
+    _autoZoomScheduledLevel = _level.levelNumber;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (!mounted || !_isLevelReady ||
+          _autoZoomScheduledLevel != _level.levelNumber) {
+        return;
+      }
+
+      final cellSize = _game.gridComponent?.cellSize ??
+          min(viewportSize.width, viewportSize.height) / _level.gridSize;
+      final targetScale = (24 / cellSize).clamp(1.2, 1.65).toDouble();
+      final dx = viewportSize.width * (1 - targetScale) / 2;
+      final dy = viewportSize.height * (1 - targetScale) / 2;
+      final target = Matrix4.identity()
+        ..translateByDouble(dx, dy, 0, 1)
+        ..scaleByDouble(targetScale, targetScale, 1, 1);
+
+      _autoZoomAnimation = Matrix4Tween(
+        begin: _transformationController.value,
+        end: target,
+      ).animate(CurvedAnimation(
+        parent: _autoZoomController,
+        curve: Curves.easeInOutCubic,
+      ));
+      _autoZoomController.forward(from: 0);
+    });
+  }
+
+  void _cancelAutoZoomForUserGesture() {
+    _autoZoomController.stop();
+    _autoZoomAnimation = null;
+    if (_isLevelReady) _autoZoomScheduledLevel = _level.levelNumber;
+  }
+
   void _onGameStateChanged() {
     if (!mounted) return;
+    _streakResetTimer?.cancel();
+    if (_gameState!.visibleTapStreak > 0) {
+      _streakResetTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) setState(() {});
+      });
+    }
     setState(() {
       _lives = _gameState!.lives;
     });
@@ -205,21 +360,44 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         _gameState!.livesLost, _level.totalArrows, _gameState!.movesUsed);
     final score =
         AppConstants.baseScore + (_lives * AppConstants.bonusPerRemainingLife);
+    int reward;
 
-    if (!_isSandbox) {
+    if (_isDailyChallenge && _dailyChallengeDateKey != null) {
+      final isFirstClear =
+          !progress.isDailyChallengeCompleted(_dailyChallengeDateKey!);
+      final isToday = _dailyChallengeDateKey ==
+          ProgressRepository.dailyChallengeDateKey(DateTime.now());
+      reward = !isFirstClear ? 0 : (isToday ? 25 : 10);
+      unawaited(progress.recordDailyChallengeComplete(
+          _dailyChallengeDateKey!, stars));
+      if (reward > 0) unawaited(progress.addCoins(reward));
+    } else if (!_isSandbox) {
+      final isFirstClear = !progress.isLevelCompleted(_level.levelNumber);
+      reward = ProgressRepository.computeLevelCoinReward(
+        levelNumber: _level.levelNumber,
+        stars: stars,
+        isFirstClear: isFirstClear,
+      );
       progress.recordLevelComplete(LevelResult(
         levelNumber: _level.levelNumber,
         stars: stars,
         score: score,
         movesUsed: _gameState!.movesUsed,
         livesLost: _gameState!.livesLost,
+        maxTapStreak: _gameState!.maxTapStreak,
         completed: true,
         completedAt: DateTime.now(),
       ));
+          unawaited(progress.addCoins(reward));
 
-      final levelType = AppConstants.levelTypeFor(_level.levelNumber);
-      adManager.onLevelComplete(_level.levelNumber, levelType.isSpecial);
+      if (!_isDailyChallenge) {
+        final levelType = AppConstants.levelTypeFor(_level.levelNumber);
+        adManager.onLevelComplete(_level.levelNumber, levelType.isSpecial);
+      }
+    } else {
+      reward = 0;
     }
+    _completionCoinReward = reward;
 
     Future.delayed(const Duration(milliseconds: 300), () {
       if (mounted) {
@@ -232,7 +410,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
             }
           });
         }
-        _showLevelCompleteDialog(stars, score);
+        _showLevelCompleteDialog(stars, reward);
       }
     });
   }
@@ -289,6 +467,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _handleRestart() async {
+    final progress = context.read<ProgressRepository>();
+    if (!await progress.consumeHeart()) {
+      final purchased = await _showHeartRequiredDialog();
+      if (!purchased || !mounted || !await progress.consumeHeart()) return;
+    }
     final totalArrows = _level.arrows.length;
     final activeArrows =
         _gameState?.arrows.where((a) => a.state != ArrowState.sliding).length ??
@@ -309,10 +492,54 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         _showingDeadlock = false;
         _inspectingDeadlock = false;
         _game.resetLevel();
-        _lives = AppConstants.maxLives;
+        _lives = AppConstants.maxGameplayLives;
         _resetTimerForLevel();
       });
     }
+  }
+
+  Future<bool> _showHeartRequiredDialog() async {
+    final progress = context.read<ProgressRepository>();
+    final action = await ResourceOfferDialog.show(
+      context,
+      title: 'OUT OF HEARTS',
+      message: 'A heart is needed to play. Hearts regenerate every 10 minutes.\n\nCoins: ${progress.coins}',
+      icon: Icons.favorite_rounded,
+      iconColor: const Color(0xFFFF4D79),
+      actions: [
+        ResourceOfferAction(
+          label: 'Refill all 5 hearts',
+          value: 'refill',
+          price: '${AppConstants.heartCostFullRefill} coins',
+          icon: Icons.favorite_rounded,
+          color: const Color(0xFFE83E69),
+            enabled: progress.coins >= AppConstants.heartCostFullRefill &&
+              !progress.livesAreFull,
+        ),
+        ResourceOfferAction(
+          label: 'Buy 1 heart',
+          value: 'one',
+          price: '${AppConstants.heartCostSingle} coins',
+          icon: Icons.favorite_border_rounded,
+          color: const Color(0xFF9A4BE8),
+            enabled: progress.coins >= AppConstants.heartCostSingle &&
+              !progress.livesAreFull,
+        ),
+      ],
+    );
+    if (action == 'refill') {
+      return progress.purchaseHearts(
+        amount: AppConstants.maxLives,
+        cost: AppConstants.heartCostFullRefill,
+      );
+    }
+    if (action == 'one') {
+      return progress.purchaseHearts(
+        amount: 1,
+        cost: AppConstants.heartCostSingle,
+      );
+    }
+    return false;
   }
 
   Future<void> _showSettingsDialog() async {
@@ -353,12 +580,105 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _showShopDialog(BuildContext ctx, {int initialTab = 0}) {
-    showDialog<void>(
-      context: ctx,
-      barrierColor: Colors.black87,
-      builder: (_) => ShopDialog(initialTab: initialTab),
+  Future<void> _handleHintPressed() async {
+    final progress = context.read<ProgressRepository>();
+    if (progress.hints > 0) {
+      _revealHintArrow();
+      return;
+    }
+
+    final choice = await ResourceOfferDialog.show(
+      context,
+      title: 'NO HINTS LEFT',
+      message: 'Get a hint to reveal an arrow with a clear escape path.\n\nCoins: ${progress.coins}',
+      icon: Icons.lightbulb_rounded,
+      iconColor: const Color(0xFF9A4BE8),
+      actions: [
+        ResourceOfferAction(
+          label: 'Watch an ad for 1 hint',
+          value: 'ad',
+          price: 'FREE',
+          icon: Icons.play_circle_outline_rounded,
+          color: const Color(0xFF2EAD73),
+        ),
+        ResourceOfferAction(
+          label: 'Buy 1 hint',
+          value: 'buy',
+          price: '${AppConstants.hintCostSingle} coins',
+          icon: Icons.lightbulb_outline_rounded,
+          color: const Color(0xFF9147E3),
+          enabled: progress.coins >= AppConstants.hintCostSingle,
+        ),
+      ],
     );
+    if (!mounted || choice == null) return;
+
+    if (choice == 'buy') {
+      if (await progress.purchaseHints()) _revealHintArrow();
+      return;
+    }
+
+    final adManager = context.read<AdManager>();
+    adManager.showRewardedWithLoader(
+      context,
+      onRewarded: () async {
+        await progress.addHints(1);
+        if (mounted) _revealHintArrow();
+      },
+    );
+  }
+
+  void _revealHintArrow() {
+    final gameState = _gameState;
+    final arrowId = gameState?.findHintArrowId();
+    if (arrowId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No clear arrow is available right now.')),
+      );
+      return;
+    }
+    final progress = context.read<ProgressRepository>();
+    if (!progress.useHint()) return;
+    _game.gridComponent?.showHintArrow(arrowId);
+    _focusBoardOnArrow(arrowId);
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('A safe arrow is highlighted.')),
+    );
+  }
+
+  void _focusBoardOnArrow(String arrowId) {
+    final viewport = _gameViewportSize;
+    final grid = _game.gridComponent;
+    final path = _gameState?.arrowPathFor(arrowId);
+    if (viewport == null || grid == null || path == null || path.isEmpty) return;
+
+    _cancelAutoZoomForUserGesture();
+    final averageRow = path.fold<int>(0, (sum, cell) => sum + cell[0]) / path.length;
+    final averageCol = path.fold<int>(0, (sum, cell) => sum + cell[1]) / path.length;
+    final focus = Offset(
+      grid.position.x + (averageCol + 0.5) * grid.cellSize,
+      grid.position.y + (averageRow + 0.5) * grid.cellSize,
+    );
+    final currentScale = _transformationController.value.getMaxScaleOnAxis();
+    final targetScale = max(currentScale, 1.75).clamp(1.0, 2.2).toDouble();
+    final target = Matrix4.identity()
+      ..translateByDouble(
+        viewport.width / 2 - focus.dx * targetScale,
+        viewport.height / 2 - focus.dy * targetScale,
+        0,
+        1,
+      )
+      ..scaleByDouble(targetScale, targetScale, 1, 1);
+
+    _autoZoomAnimation = Matrix4Tween(
+      begin: _transformationController.value,
+      end: target,
+    ).animate(CurvedAnimation(
+      parent: _autoZoomController,
+      curve: Curves.easeInOutCubic,
+    ));
+    _autoZoomController.forward(from: 0);
   }
 
   Future<bool> _showRestartConfirmDialog() async {
@@ -693,6 +1013,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   void _handleNextLevel() {
     Navigator.pop(context);
+    if (_isDailyChallenge) {
+      Navigator.pop(context);
+      return;
+    }
     Navigator.pushReplacementNamed(
       context,
       '/game',
@@ -703,8 +1027,14 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _handleMenu() {
+  Future<void> _handleMenu({bool closeOverlay = false}) async {
+    if (!_showingComplete) {
+      await context.read<ProgressRepository>().consumeHeart();
+    }
+    if (!mounted) return;
+    if (closeOverlay) Navigator.pop(context);
     Navigator.pop(context);
+    if (_isDailyChallenge) return;
     Navigator.pushReplacementNamed(context, '/menu');
   }
 
@@ -720,8 +1050,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       context,
       onRewarded: () {
         rewarded = true;
-        context.read<ProgressRepository>().addCoins(AppConstants.baseScore +
-            (_lives * AppConstants.bonusPerRemainingLife));
+        context.read<ProgressRepository>().addCoins(_completionCoinReward);
         _handleNextLevel();
       },
       onDismissed: () {
@@ -732,7 +1061,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _showLevelCompleteDialog(int stars, int score) async {
+  Future<void> _showLevelCompleteDialog(int stars, int reward) async {
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -741,9 +1070,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           _LevelCompleteDialog(
             level: _level,
             stars: stars,
-            score: score,
+            reward: reward,
+            maxTapStreak: _gameState?.maxTapStreak ?? 0,
             onNextLevel: _handleNextLevel,
-            onMenu: _handleMenu,
+            onMenu: () => _handleMenu(closeOverlay: true),
             onDoubleCoins: _handleDoubleCoins,
           ),
           // Top Center Explosive Confetti (Subtle)
@@ -901,7 +1231,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         },
         onMenu: () {
           Navigator.pop(context);
-          Navigator.pushReplacementNamed(context, '/menu');
+          _handleMenu();
         },
       ),
     );
@@ -910,8 +1240,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _transformationController.dispose();
+    _autoZoomController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _levelTimer?.cancel();
+    _streakResetTimer?.cancel();
     _gameState?.removeListener(_onGameStateChanged);
     _confettiController.dispose();
     super.dispose();
@@ -1044,7 +1376,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       final args =
           ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
       final levelNum = args?['level'] as int? ?? 1;
-      return _withExitGuard(_LevelLoadingScreen(levelNumber: levelNum));
+      return _withExitGuard(_LevelLoadingScreen(
+        levelNumber: levelNum,
+        isDailyChallenge: _isDailyChallenge,
+      ));
     }
 
     final levelType = AppConstants.levelTypeFor(_level.levelNumber);
@@ -1061,17 +1396,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 level: _level,
                 levelType: levelType,
                 lives: _lives,
+                hints: context.watch<ProgressRepository>().hints,
+                tapStreak: _gameState!.visibleTapStreak,
+                isDailyChallenge: _isDailyChallenge,
                 onPause: _showSettingsDialog,
-                onHint: () {
-                  // Use a hint if available, otherwise open shop
-                  final repo = context.read<ProgressRepository>();
-                  if (repo.hints > 0) {
-                    repo.useHint();
-                    setState(() {});
-                  } else {
-                    _showShopDialog(context, initialTab: 2);
-                  }
-                },
+                onHint: () => _handleHintPressed(),
                 onSettings: _showSettingsDialog,
               ),
 
@@ -1096,6 +1425,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                     // handles non-square grids by fitting activeCols × activeRows.
                     final boardW = constraints.maxWidth;
                     final boardH = constraints.maxHeight;
+                    final viewportSize = Size(boardW, boardH);
+                    _scheduleAutoZoom(viewportSize);
                     final fadeH = boardH * 0.10;
                     return Stack(
                       alignment: Alignment.center,
@@ -1110,6 +1441,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                               maxScale: 4.0,
                               boundaryMargin: const EdgeInsets.all(180),
                               clipBehavior: Clip.none,
+                                onInteractionStart: (_) =>
+                                  _cancelAutoZoomForUserGesture(),
+                                onInteractionUpdate: (_) =>
+                                  _updateExitViewportSceneRect(viewportSize),
+                                onInteractionEnd: (_) =>
+                                  _updateExitViewportSceneRect(viewportSize),
                               child: Center(
                                 child: SizedBox(
                                   width: boardW,
@@ -1203,7 +1540,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
             )
           : null,
     );
-    return _withExitGuard(screen);
+    return _withExitGuard(
+      AbsorbPointer(
+        absorbing: _isEntryGatePending,
+        child: screen,
+      ),
+    );
   }
 
   bool get _isLevelReady => _gameState != null;
@@ -1943,6 +2285,9 @@ class _TopBar extends StatelessWidget {
   final LevelModel level;
   final LevelType levelType;
   final int lives;
+  final int hints;
+  final int tapStreak;
+  final bool isDailyChallenge;
   final VoidCallback onPause;
   final VoidCallback onHint;
   final VoidCallback onSettings;
@@ -1951,6 +2296,9 @@ class _TopBar extends StatelessWidget {
     required this.level,
     required this.levelType,
     required this.lives,
+    required this.hints,
+    required this.tapStreak,
+    required this.isDailyChallenge,
     required this.onPause,
     required this.onHint,
     required this.onSettings,
@@ -1978,7 +2326,7 @@ class _TopBar extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                'LEVEL ${level.levelNumber}',
+                isDailyChallenge ? 'DAILY CHALLENGE' : 'LEVEL ${level.levelNumber}',
                 style: GoogleFonts.nunito(
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
@@ -1990,7 +2338,7 @@ class _TopBar extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: List.generate(
-                  AppConstants.maxLives,
+                  AppConstants.maxGameplayLives,
                   (i) => Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 3),
                     child: Icon(
@@ -2001,6 +2349,17 @@ class _TopBar extends StatelessWidget {
                   ),
                 ),
               ),
+              if (tapStreak >= 2) ...[
+                const SizedBox(height: 2),
+                Text(
+                  'STREAK ×$tapStreak',
+                  style: GoogleFonts.nunito(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFFFFD45E),
+                  ),
+                ),
+              ],
             ],
           ),
 
@@ -2015,14 +2374,21 @@ class _TopBar extends StatelessWidget {
                   onHint();
                 },
                 badge: Container(
-                  width: 16,
-                  height: 16,
+                  constraints: const BoxConstraints(minWidth: 19, minHeight: 19),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
                   decoration: const BoxDecoration(
                     color: Color(0xFFFF3366),
                     shape: BoxShape.circle,
                   ),
                   alignment: Alignment.center,
-                  child: const Icon(Icons.add, color: Colors.white, size: 12),
+                  child: Text(
+                    '$hints',
+                    style: GoogleFonts.nunito(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
@@ -2091,7 +2457,8 @@ class _TopBar extends StatelessWidget {
 class _LevelCompleteDialog extends StatelessWidget {
   final LevelModel level;
   final int stars;
-  final int score;
+  final int reward;
+  final int maxTapStreak;
   final VoidCallback onNextLevel;
   final VoidCallback onMenu;
   final VoidCallback onDoubleCoins;
@@ -2099,7 +2466,8 @@ class _LevelCompleteDialog extends StatelessWidget {
   const _LevelCompleteDialog({
     required this.level,
     required this.stars,
-    required this.score,
+    required this.reward,
+    required this.maxTapStreak,
     required this.onNextLevel,
     required this.onMenu,
     required this.onDoubleCoins,
@@ -2189,12 +2557,23 @@ class _LevelCompleteDialog extends StatelessWidget {
                     size: 22,
                   ),
                   const SizedBox(width: 8),
-                  Text('+$score',
+                  Text('+$reward',
                       style: GoogleFonts.nunito(
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
                           color: AppColors.accentGold)),
                 ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              maxTapStreak > 0
+                  ? 'MAX TAP STREAK  ×$maxTapStreak'
+                  : 'NO TAP STREAK THIS LEVEL',
+              style: GoogleFonts.nunito(
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                color: AppColors.accentGold,
               ),
             ),
             const SizedBox(height: 24),
@@ -3074,7 +3453,8 @@ class _BouncingDotsState extends State<_BouncingDots>
 // ── Normal level loading screen ───────────────────────────────────────────────
 class _LevelLoadingScreen extends StatefulWidget {
   final int levelNumber;
-  const _LevelLoadingScreen({required this.levelNumber});
+  final bool isDailyChallenge;
+  const _LevelLoadingScreen({required this.levelNumber, this.isDailyChallenge = false});
 
   @override
   State<_LevelLoadingScreen> createState() => _LevelLoadingScreenState();
@@ -3106,6 +3486,7 @@ class _LevelLoadingScreenState extends State<_LevelLoadingScreen>
   @override
   Widget build(BuildContext context) {
     final type = _levelType;
+    if (widget.isDailyChallenge) return _buildNormalScreen();
     if (type == LevelType.boss)
       return _BossLoadingScreen(levelNumber: widget.levelNumber);
     if (type == LevelType.god)
@@ -3151,7 +3532,7 @@ class _LevelLoadingScreenState extends State<_LevelLoadingScreen>
               ),
               const SizedBox(height: 28),
               Text(
-                'Level ${widget.levelNumber}',
+                widget.isDailyChallenge ? 'Daily Challenge' : 'Level ${widget.levelNumber}',
                 style: GoogleFonts.nunito(
                   fontSize: 28,
                   fontWeight: FontWeight.w900,

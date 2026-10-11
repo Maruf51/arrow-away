@@ -1,5 +1,6 @@
 import 'package:arrow_escape/data/models/arrow.dart';
 import 'package:arrow_escape/game/components/arrow_component.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The exit track used to be padded with `gridSize + 2` cells ahead of the
@@ -96,5 +97,46 @@ void main() {
         expect(e, lessThanOrEqualTo(g + 2));
       }
     }
+  });
+
+  test('exit extension reaches the visible viewport edge in every direction', () {
+    const viewport = Rect.fromLTRB(0, 0, 400, 700);
+    const center = Offset(200, 350);
+    expect(
+      ArrowComponent.viewportExtensionCells(
+        headCenter: center,
+        direction: ArrowDirection.right,
+        cellSize: 20,
+        viewport: viewport,
+      ),
+      11,
+    );
+    expect(
+      ArrowComponent.viewportExtensionCells(
+        headCenter: center,
+        direction: ArrowDirection.left,
+        cellSize: 20,
+        viewport: viewport,
+      ),
+      11,
+    );
+    expect(
+      ArrowComponent.viewportExtensionCells(
+        headCenter: center,
+        direction: ArrowDirection.down,
+        cellSize: 20,
+        viewport: viewport,
+      ),
+      19,
+    );
+    expect(
+      ArrowComponent.viewportExtensionCells(
+        headCenter: center,
+        direction: ArrowDirection.up,
+        cellSize: 20,
+        viewport: viewport,
+      ),
+      19,
+    );
   });
 }

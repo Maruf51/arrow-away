@@ -252,6 +252,7 @@ class AdManager {
     BuildContext context, {
     required void Function() onRewarded,
     void Function()? onDismissed,
+    bool strictReward = false,
   }) async {
     bool loaderOpen = true;
 
@@ -315,6 +316,7 @@ class AdManager {
     }
 
     await showRewarded(
+      strictReward: strictReward,
       onAdOpened: closeLoader,
       onRewarded: () {
         closeLoader();
@@ -338,6 +340,7 @@ class AdManager {
     required void Function() onRewarded,
     void Function()? onDismissed,
     void Function()? onAdOpened,
+    bool strictReward = false,
   }) async {
     void handleSuccess() {
       onRewarded();
@@ -365,7 +368,12 @@ class AdManager {
         onAdFailedToShowFullScreenContent: (ad, error) async {
           ad.dispose();
           _loadAdmobRewarded();
-          await _showRewardedFallback(handleSuccess: handleSuccess, handleFinish: handleFinish, onAdOpened: onAdOpened);
+          await _showRewardedFallback(
+            handleSuccess: handleSuccess,
+            handleFinish: handleFinish,
+            onAdOpened: onAdOpened,
+            strictReward: strictReward,
+          );
         },
       );
 
@@ -393,7 +401,12 @@ class AdManager {
           onAdFailedToShowFullScreenContent: (ad, error) async {
             ad.dispose();
             _loadAdmobRewarded();
-            await _showRewardedFallback(handleSuccess: handleSuccess, handleFinish: handleFinish, onAdOpened: onAdOpened);
+            await _showRewardedFallback(
+              handleSuccess: handleSuccess,
+              handleFinish: handleFinish,
+              onAdOpened: onAdOpened,
+              strictReward: strictReward,
+            );
           },
         );
 
@@ -407,14 +420,30 @@ class AdManager {
     }
 
     // Tier 3 & beyond: Fallback cascade
-    await _showRewardedFallback(handleSuccess: handleSuccess, handleFinish: handleFinish, onAdOpened: onAdOpened);
+    await _showRewardedFallback(
+      handleSuccess: handleSuccess,
+      handleFinish: handleFinish,
+      onAdOpened: onAdOpened,
+      strictReward: strictReward,
+    );
   }
 
   Future<void> _showRewardedFallback({
     required VoidCallback handleSuccess,
     required VoidCallback handleFinish,
     VoidCallback? onAdOpened,
+    required bool strictReward,
   }) async {
+    if (strictReward) {
+      await _showUnityOrDirectFallback(
+        handleSuccess: handleSuccess,
+        handleFinish: handleFinish,
+        onAdOpened: onAdOpened,
+        allowDirectRewardFallback: false,
+      );
+      return;
+    }
+
     // Fallback 1: Pre-loaded AdMob Interstitial
     if (AppConstants.enableAdMob && _isAdmobInterstitialLoaded && _admobInterstitial != null) {
       final ad = _admobInterstitial!;
@@ -435,7 +464,12 @@ class AdManager {
         onAdFailedToShowFullScreenContent: (ad, error) async {
           ad.dispose();
           _loadAdmobInterstitial();
-          await _showUnityOrDirectFallback(handleSuccess: handleSuccess, handleFinish: handleFinish, onAdOpened: onAdOpened);
+          await _showUnityOrDirectFallback(
+            handleSuccess: handleSuccess,
+            handleFinish: handleFinish,
+            onAdOpened: onAdOpened,
+            allowDirectRewardFallback: true,
+          );
         },
       );
 
@@ -460,7 +494,12 @@ class AdManager {
           onAdFailedToShowFullScreenContent: (ad, error) async {
             ad.dispose();
             _loadAdmobInterstitial();
-            await _showUnityOrDirectFallback(handleSuccess: handleSuccess, handleFinish: handleFinish, onAdOpened: onAdOpened);
+            await _showUnityOrDirectFallback(
+              handleSuccess: handleSuccess,
+              handleFinish: handleFinish,
+              onAdOpened: onAdOpened,
+              allowDirectRewardFallback: true,
+            );
           },
         );
 
@@ -470,13 +509,19 @@ class AdManager {
     }
 
     // Fallback 3: Unity Ads / Direct Reward
-    await _showUnityOrDirectFallback(handleSuccess: handleSuccess, handleFinish: handleFinish, onAdOpened: onAdOpened);
+    await _showUnityOrDirectFallback(
+      handleSuccess: handleSuccess,
+      handleFinish: handleFinish,
+      onAdOpened: onAdOpened,
+      allowDirectRewardFallback: true,
+    );
   }
 
   Future<void> _showUnityOrDirectFallback({
     required VoidCallback handleSuccess,
     required VoidCallback handleFinish,
     VoidCallback? onAdOpened,
+    required bool allowDirectRewardFallback,
   }) async {
     if (AppConstants.enableUnityAds && _isUnityInitialized && _isUnityRewardedLoaded) {
       onAdOpened?.call();
@@ -487,6 +532,11 @@ class AdManager {
         },
         onDismissed: handleFinish,
       );
+      return;
+    }
+
+    if (!allowDirectRewardFallback) {
+      handleFinish();
       return;
     }
 

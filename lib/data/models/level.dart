@@ -241,6 +241,7 @@ class LevelResult {
   final int score;
   final int movesUsed;
   final int livesLost;
+  final int maxTapStreak;
   final bool completed;
   final DateTime completedAt;
 
@@ -250,6 +251,7 @@ class LevelResult {
     required this.score,
     required this.movesUsed,
     required this.livesLost,
+    this.maxTapStreak = 0,
     required this.completed,
     required this.completedAt,
   });
@@ -260,6 +262,7 @@ class LevelResult {
     'score': score,
     'movesUsed': movesUsed,
     'livesLost': livesLost,
+    'maxTapStreak': maxTapStreak,
     'completed': completed,
     'completedAt': completedAt.toIso8601String(),
   };
@@ -270,6 +273,7 @@ class LevelResult {
     score: json['score'] as int,
     movesUsed: json['movesUsed'] as int,
     livesLost: json['livesLost'] as int,
+    maxTapStreak: json['maxTapStreak'] as int? ?? 0,
     completed: json['completed'] as bool,
     completedAt: DateTime.parse(json['completedAt'] as String),
   );

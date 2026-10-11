@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../core/constants.dart';
 import '../core/audio_manager.dart';
 import '../data/repositories/progress_repository.dart';
 import 'ribbon_header.dart';
@@ -139,6 +140,73 @@ class _ShopDialogState extends State<ShopDialog> {
                     ),
 
                     const SizedBox(height: 12),
+
+                    if (progress.hasUnclaimedDailyCoin) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFDF8),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: const Color(0xFFEBE0CC),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.monetization_on_rounded,
+                              color: Color(0xFFE5A91A),
+                              size: 27,
+                            ),
+                            const SizedBox(width: 9),
+                            Expanded(
+                              child: Text(
+                                'Daily Free Coins',
+                                style: GoogleFonts.nunito(
+                                  color: const Color(0xFF2C194D),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            FilledButton(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF00A85A),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 11, vertical: 9),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              onPressed: () {
+                                AudioManager.instance.playClick();
+                                final claimed = progress.claimDailyCoin();
+                                if (claimed > 0) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Claimed $claimed coins!'),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                }
+                              },
+                              child: Text(
+                                'CLAIM +${AppConstants.dailyFreeCoins} 🪙',
+                                style: GoogleFonts.nunito(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
 
                     // 3 Tabs (SKINS, COINS, 💡 & ❤️)
                     Row(
@@ -545,55 +613,13 @@ class _ShopDialogState extends State<ShopDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'GET EXTRA COINS',
+          'COINS ARE EARNED BY CLEARING LEVELS',
           style: GoogleFonts.nunito(
             fontSize: 12,
             fontWeight: FontWeight.w900,
             color: const Color(0xFF2C194D),
             letterSpacing: 0.8,
           ),
-        ),
-        const SizedBox(height: 12),
-        _buildStoreItemCard(
-          icon: '🎁',
-          title: 'Free 500 Coins',
-          subtitle: 'Daily gift reward',
-          buttonText: 'CLAIM',
-          buttonColor: const Color(0xFF00C853),
-          onTap: () {
-            AudioManager.instance.playClick();
-            progress.addCoins(500);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  '+500 Coins claimed!',
-                  style: GoogleFonts.nunito(fontWeight: FontWeight.bold),
-                ),
-                backgroundColor: const Color(0xFF00C853),
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 10),
-        _buildStoreItemCard(
-          icon: '🪙',
-          title: '2,500 Coins',
-          subtitle: 'Starter coin bundle',
-          buttonText: 'FREE DEMO',
-          buttonColor: const Color(0xFFF5A623),
-          onTap: () {
-            AudioManager.instance.playClick();
-            progress.addCoins(2500);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  '+2,500 Coins added!',
-                  style: GoogleFonts.nunito(fontWeight: FontWeight.bold),
-                ),
-                backgroundColor: const Color(0xFFF5A623),
-              ),
-            );
-          },
         ),
       ],
     );
@@ -619,13 +645,17 @@ class _ShopDialogState extends State<ShopDialog> {
           icon: '❤️',
           title: 'Full Lives Refill',
           subtitle: 'Restore 5 maximum hearts',
-          buttonText: '250 🪙',
+          buttonText: '${AppConstants.heartCostFullRefill} 🪙',
           buttonColor: const Color(0xFFFF4D79),
-          onTap: progress.coins >= 250
-              ? () {
+            onTap: progress.coins >= AppConstants.heartCostFullRefill &&
+              !progress.livesAreFull
+              ? () async {
                   AudioManager.instance.playClick();
-                  progress.addCoins(-250);
-                  progress.resetLivesToFull();
+                  final purchased = await progress.purchaseHearts(
+                    amount: AppConstants.maxLives,
+                    cost: AppConstants.heartCostFullRefill,
+                  );
+                  if (!purchased || !context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
@@ -637,10 +667,16 @@ class _ShopDialogState extends State<ShopDialog> {
                   );
                 }
               : () {
+                  if (progress.livesAreFull) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Your hearts are already full.')),
+                    );
+                    return;
+                  }
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        'Need 250 coins! Play levels or get coins.',
+                        'Need ${AppConstants.heartCostFullRefill} coins! Play levels or get coins.',
                         style: GoogleFonts.nunito(fontWeight: FontWeight.bold),
                       ),
                       backgroundColor: const Color(0xFFE74C3C),
@@ -654,12 +690,12 @@ class _ShopDialogState extends State<ShopDialog> {
           icon: '💡',
           title: '+3 Puzzle Hints',
           subtitle: 'Show safe clearable arrows',
-          buttonText: '150 🪙',
+          buttonText: '${AppConstants.hintCostPack3} 🪙',
           buttonColor: const Color(0xFF8F46E8),
-          onTap: progress.coins >= 150
+          onTap: progress.coins >= AppConstants.hintCostPack3
               ? () {
                   AudioManager.instance.playClick();
-                  progress.addCoins(-150);
+                  progress.addCoins(-AppConstants.hintCostPack3);
                   progress.addHints(3);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -675,7 +711,7 @@ class _ShopDialogState extends State<ShopDialog> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        'Need 150 coins! Play levels or get coins.',
+                        'Need ${AppConstants.hintCostPack3} coins! Play levels or get coins.',
                         style: GoogleFonts.nunito(fontWeight: FontWeight.bold),
                       ),
                       backgroundColor: const Color(0xFFE74C3C),

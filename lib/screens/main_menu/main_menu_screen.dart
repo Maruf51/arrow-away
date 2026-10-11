@@ -29,13 +29,19 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   bool _isNavigating = false;
   int _titleTapCount = 0;
   Timer? _titleTapReset;
+  Timer? _heartRefreshTimer;
 
   @override
   void initState() {
     super.initState();
+    _heartRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) context.read<ProgressRepository>().refreshHearts();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<ProgressRepository>().recordDailyPlay();
+      final progress = context.read<ProgressRepository>();
+      progress.recordDailyPlay();
+      progress.refreshHearts();
       _preWarmLevels();
       _checkPlayStoreUpdate();
     });
@@ -44,6 +50,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   @override
   void dispose() {
     _titleTapReset?.cancel();
+    _heartRefreshTimer?.cancel();
     super.dispose();
   }
 
@@ -264,11 +271,11 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
           ),
           const SizedBox(width: 10),
           // Purple Circular Calendar Icon
-          _PurpleCircleIconButton(
-            icon: Icons.calendar_month_rounded,
+          _DailyCalendarButton(
+            showDot: !progress.dailyChallengeCompletedToday,
             onTap: () {
               AudioManager.instance.playClick();
-              _showComingSoon(context, 'Daily Rewards');
+              Navigator.pushNamed(context, '/daily_challenge');
             },
           ),
           const Spacer(),
@@ -648,20 +655,67 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     );
   }
 
-  void _showComingSoon(BuildContext context, String title) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '$title coming soon!',
-          style: GoogleFonts.nunito(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
+}
+
+class _DailyCalendarButton extends StatefulWidget {
+  const _DailyCalendarButton({required this.showDot, required this.onTap});
+
+  final bool showDot;
+  final VoidCallback onTap;
+
+  @override
+  State<_DailyCalendarButton> createState() => _DailyCalendarButtonState();
+}
+
+class _DailyCalendarButtonState extends State<_DailyCalendarButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 650),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        _PurpleCircleIconButton(
+          icon: Icons.calendar_month_rounded,
+          onTap: widget.onTap,
         ),
-        backgroundColor: const Color(0xFF7B26E0),
-        duration: const Duration(seconds: 2),
-      ),
+        if (widget.showDot)
+          Positioned(
+            right: 0,
+            top: 0,
+            child: IgnorePointer(
+              child: AnimatedBuilder(
+                animation: _pulse,
+                builder: (context, child) => Opacity(
+                  opacity: 0.7 + _pulse.value * 0.3,
+                  child: Transform.scale(
+                    scale: 0.8 + _pulse.value * 0.35,
+                    child: child,
+                  ),
+                ),
+                child: Container(
+                  width: 11,
+                  height: 11,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF496B),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.5),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

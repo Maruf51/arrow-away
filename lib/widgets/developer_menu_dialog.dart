@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -108,11 +109,12 @@ class _DeveloperMenuDialogState extends State<DeveloperMenuDialog> {
         Wrap(
           spacing: 8,
           children: [
-            OutlinedButton.icon(
-              onPressed: () => progress.addCoins(1000),
-              icon: const Icon(Icons.monetization_on_outlined),
-              label: const Text('+1,000 coins'),
-            ),
+            if (kDebugMode)
+              OutlinedButton.icon(
+                onPressed: () => progress.addCoins(1000),
+                icon: const Icon(Icons.monetization_on_outlined),
+                label: const Text('+1,000 coins'),
+              ),
             OutlinedButton.icon(
               onPressed: () => progress.addHints(10),
               icon: const Icon(Icons.lightbulb_outline),
