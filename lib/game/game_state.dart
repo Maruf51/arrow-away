@@ -164,6 +164,24 @@ class GameState extends ChangeNotifier {
     return _consumedDotsByArrow[arrowId] ?? [];
   }
 
+  /// Grid cells visited by the same exit walk used to decide whether a move
+  /// succeeds. Paired arrows ignore one another because they leave together.
+  ArrowExitTrace exitTraceForArrow(String arrowId) {
+    final arrow = _arrows.firstWhere((candidate) => candidate.id == arrowId);
+    final group = arrow.colorGroup;
+    String? partnerId;
+    if (group != null) {
+      final partners = _arrows
+          .where((candidate) => candidate.colorGroup == group)
+          .toList();
+      if (partners.length == 2) {
+        partnerId = partners.firstWhere((candidate) => candidate.id != arrowId).id;
+      }
+    }
+    final exit = _computeExitInfo(arrow, partnerId);
+    return ArrowExitTrace(exit.trace, exit.direction ?? arrow.direction);
+  }
+
   void _recordConsumedDots(String arrowId, List<String> consumedKeys) {
     final dots = <OrphanDot>[];
     for (final key in consumedKeys) {
@@ -348,13 +366,17 @@ class GameState extends ChangeNotifier {
     int nc = head[1] + d[1];
     final consumed = <String>[];
     final visited = <String>{};
+    final trace = <List<int>>[];
 
     while (nr >= 0 && nr < gridSize && nc >= 0 && nc < gridSize) {
       final key = '$nr,$nc';
-      if (visited.contains(key)) return _ExitInfo(true, []);
+      if (visited.contains(key)) {
+        return _ExitInfo(true, [], trace, currentDir);
+      }
       visited.add(key);
 
       if (_orphanDots.containsKey(key)) {
+        trace.add([nr, nc]);
         consumed.add(key);
         final dotType = _orphanDots[key]!;
         if (dotType == OrphanDotType.up) {
@@ -377,14 +399,15 @@ class GameState extends ChangeNotifier {
           }
           if (hit) break;
         }
-        if (hit) return _ExitInfo(true, []);
+        if (hit) return _ExitInfo(true, [], trace, currentDir);
+        trace.add([nr, nc]);
       }
 
       d = currentDir.delta;
       nr += d[0];
       nc += d[1];
     }
-    return _ExitInfo(false, consumed);
+    return _ExitInfo(false, consumed, trace, currentDir);
   }
 
   // ── Reset ─────────────────────────────────────────────────────────────────────
@@ -434,5 +457,18 @@ enum TapResult { exited, blocked, locked, ignored }
 class _ExitInfo {
   final bool blocked;
   final List<String> consumed; // orphan dot keys consumed along this path
-  const _ExitInfo(this.blocked, [this.consumed = const []]);
+  final List<List<int>> trace;
+  final ArrowDirection? direction;
+  const _ExitInfo(this.blocked, [
+    this.consumed = const [],
+    this.trace = const [],
+    this.direction,
+  ]);
+}
+
+class ArrowExitTrace {
+  final List<List<int>> cells;
+  final ArrowDirection direction;
+
+  const ArrowExitTrace(this.cells, this.direction);
 }

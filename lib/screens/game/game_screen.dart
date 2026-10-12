@@ -58,6 +58,8 @@ class _GameScreenState extends State<GameScreen>
   // Timer fields
   Timer? _levelTimer;
   Timer? _streakResetTimer;
+  Timer? _wrongMoveFlashTimer;
+  bool _wrongMoveFlash = false;
   int _timeRemaining = 0;
   int _totalTime = 0;
   bool _isTimeoutState = false;
@@ -364,7 +366,14 @@ class _GameScreenState extends State<GameScreen>
 
   void _onLifeLost() {
     if (!mounted) return;
-    setState(() => _lives = _gameState!.lives);
+    setState(() {
+      _lives = _gameState!.lives;
+      _wrongMoveFlash = true;
+    });
+    _wrongMoveFlashTimer?.cancel();
+    _wrongMoveFlashTimer = Timer(const Duration(milliseconds: 180), () {
+      if (mounted) setState(() => _wrongMoveFlash = false);
+    });
     if (context.read<ProgressRepository>().vibrationEnabled) {
       HapticFeedback.heavyImpact();
     }
@@ -1280,6 +1289,7 @@ class _GameScreenState extends State<GameScreen>
     WidgetsBinding.instance.removeObserver(this);
     _levelTimer?.cancel();
     _streakResetTimer?.cancel();
+    _wrongMoveFlashTimer?.cancel();
     _gameState?.removeListener(_onGameStateChanged);
     _confettiController.dispose();
     super.dispose();
@@ -1540,6 +1550,18 @@ class _GameScreenState extends State<GameScreen>
                                     AppColors.background.withValues(alpha: 0),
                                   ],
                                 ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: AnimatedOpacity(
+                              opacity: _wrongMoveFlash ? 0.26 : 0,
+                              duration: const Duration(milliseconds: 100),
+                              curve: Curves.easeOut,
+                              child: const ColoredBox(
+                                color: Color(0xFFFF2638),
                               ),
                             ),
                           ),

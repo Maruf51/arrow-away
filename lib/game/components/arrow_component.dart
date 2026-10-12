@@ -542,67 +542,35 @@ class ArrowComponent extends PositionComponent with HasPaint {
   // ── Block: direction-aware shake ─────────────────────────────────────────
 
   List<Offset> _buildBlockedExtension() {
-    ArrowDirection currentDir = arrowModel.direction;
     final head = arrowModel.path[0];
-    final gridSize = gameState.level.gridSize;
-    final pts = <Offset>[];
-    var d = currentDir.delta;
-    int nr = head[0] + d[0];
-    int nc = head[1] + d[1];
-    final visited = <String>{};
+    final exitTrace = gameState.exitTraceForArrow(arrowModel.id);
+    return blockedExtensionPoints(
+      cells: exitTrace.cells,
+      head: head,
+      direction: exitTrace.direction,
+      cellSize: cellSize,
+    );
+  }
 
-    while (nr >= 0 && nr < gridSize && nc >= 0 && nc < gridSize) {
-      final key = '$nr,$nc';
-      if (visited.contains(key)) break;
-      visited.add(key);
-
-      // Check if blocked by another arrow
-      bool occupied = false;
-      for (final other in gameState.arrows) {
-        if (other.id == arrowModel.id) continue;
-        if (other.state == ArrowState.sliding) continue;
-        for (final pt in other.path) {
-          if (pt[0] == nr && pt[1] == nc) {
-            occupied = true;
-            break;
-          }
-        }
-        if (occupied) break;
-      }
-
-      if (occupied) {
-        break;
-      }
-
-      pts.add(Offset((nc + 0.5) * cellSize, (nr + 0.5) * cellSize));
-
-      if (gameState.orphanDots.containsKey(key)) {
-        final dotType = gameState.orphanDots[key]!;
-        if (dotType == OrphanDotType.up) {
-          currentDir = ArrowDirection.up;
-        } else if (dotType == OrphanDotType.down) {
-          currentDir = ArrowDirection.down;
-        } else if (dotType == OrphanDotType.left) {
-          currentDir = ArrowDirection.left;
-        } else if (dotType == OrphanDotType.right) {
-          currentDir = ArrowDirection.right;
-        }
-      }
-
-      d = currentDir.delta;
-      nr += d[0];
-      nc += d[1];
-    }
-
-    // Always add overshoot in final direction
-    final lastPoint = pts.isNotEmpty
-        ? pts.last
+  @visibleForTesting
+  static List<Offset> blockedExtensionPoints({
+    required List<List<int>> cells,
+    required List<int> head,
+    required ArrowDirection direction,
+    required double cellSize,
+  }) {
+    final points = cells
+        .map((cell) => Offset((cell[1] + 0.5) * cellSize,
+            (cell[0] + 0.5) * cellSize))
+        .toList();
+    final lastPoint = points.isNotEmpty
+        ? points.last
         : Offset((head[1] + 0.5) * cellSize, (head[0] + 0.5) * cellSize);
-    final overshootPoint =
-        lastPoint + Offset(d[1] * cellSize * 0.25, d[0] * cellSize * 0.25);
-    pts.add(overshootPoint);
-
-    return pts.reversed.toList();
+    final delta = direction.delta;
+    // Extend to the blocker edge so the arrowhead visibly reaches the turn.
+    points.add(lastPoint + Offset(delta[1] * cellSize * 0.5,
+        delta[0] * cellSize * 0.5));
+    return points.reversed.toList();
   }
 
   void _playBlockAnimation() {
