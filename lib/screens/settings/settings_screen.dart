@@ -41,9 +41,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
   static const String _privacyPolicyUrl =
       'https://gxdevs.blogspot.com/2026/07/arrow-escape-privacy-policy.html';
 
-  bool _gridDots = true;
-  bool _startArrowAnimation = true;
-
   Future<void> _launchUrl(String url) async {
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
@@ -58,194 +55,191 @@ class _SettingsDialogState extends State<SettingsDialog> {
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 350),
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.topCenter,
-          children: [
-            // ── Cream Card Body ─────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.only(top: 22),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF9EE),
-                  borderRadius: BorderRadius.circular(28),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      blurRadius: 24,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.fromLTRB(16, 36, 16, 18),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: SingleChildScrollView(
-                        physics: const BouncingScrollPhysics(),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // 1. Sound Effects
-                            _SettingToggleCard(
-                              label: 'Sound Effects',
-                              value: progress.soundEnabled,
-                              onChanged: (val) {
-                                AudioManager.instance.playClick();
-                                progress.setSoundEnabled(val);
-                              },
-                            ),
-                            const SizedBox(height: 10),
-
-                            // 2. Music
-                            _SettingToggleCard(
-                              label: 'Music',
-                              value: progress.musicEnabled,
-                              onChanged: (val) {
-                                AudioManager.instance.playClick();
-                                progress.setMusicEnabled(val);
-                              },
-                            ),
-                            const SizedBox(height: 10),
-
-                            // 3. Haptic Feedback
-                            _SettingToggleCard(
-                              label: 'Haptic Feedback',
-                              value: progress.vibrationEnabled,
-                              onChanged: (val) {
-                                AudioManager.instance.playClick();
-                                progress.setVibrationEnabled(val);
-                              },
-                            ),
-                            const SizedBox(height: 10),
-
-                            // 4. Grid Background Dots
-                            _SettingToggleCard(
-                              label: 'Grid Background Dots',
-                              value: _gridDots,
-                              onChanged: (val) {
-                                AudioManager.instance.playClick();
-                                setState(() => _gridDots = val);
-                              },
-                            ),
-                            const SizedBox(height: 10),
-
-                            // 5. Start Arrow Animation
-                            _SettingToggleCard(
-                              label: 'Start Arrow Animation',
-                              value: _startArrowAnimation,
-                              onChanged: (val) {
-                                AudioManager.instance.playClick();
-                                setState(() => _startArrowAnimation = val);
-                              },
-                            ),
-                            const SizedBox(height: 10),
-
-                            // 6. Show Framerate (FPS)
-                            _SettingToggleCard(
-                              label: 'Show Framerate (FPS)',
-                              value: progress.showFps,
-                              onChanged: (val) {
-                                AudioManager.instance.playClick();
-                                progress.setShowFps(val);
-                              },
-                            ),
-                            const SizedBox(height: 10),
-
-                            // 7. Arrow Exit Speed Section
-                            _buildArrowExitSpeedCard(progress),
-                            const SizedBox(height: 10),
-
-                            // 8. How to Play Button
-                            _buildActionCard(
-                              icon: Icons.help_outline_rounded,
-                              label: 'How to Play',
-                              onTap: () {
-                                AudioManager.instance.playClick();
-                                showDialog(
-                                  context: context,
-                                  barrierColor: Colors.black87,
-                                  builder: (_) => const HowToPlayDialog(),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 10),
-
-                            // 9. Terms & Privacy Policy Button
-                            _buildActionCard(
-                              icon: Icons.shield_outlined,
-                              label: 'Terms & Privacy Policy',
-                              onTap: () {
-                                AudioManager.instance.playClick();
-                                _launchUrl(_privacyPolicyUrl);
-                              },
-                            ),
-                            const SizedBox(height: 10),
-
-                            // 10. Reset Progress Button
-                            _buildResetProgressCard(context, progress),
-                          ],
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.7,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 350),
+          child: Stack(
+            fit: StackFit.expand,
+            clipBehavior: Clip.none,
+            alignment: Alignment.topCenter,
+            children: [
+              // ── Cream Card Body ─────────────────────────────────────────
+              Positioned.fill(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 22),
+                  child: Container(
+                    height: MediaQuery.sizeOf(context).height * 0.7 - 22,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF9EE),
+                      borderRadius: BorderRadius.circular(28),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          blurRadius: 24,
+                          offset: const Offset(0, 10),
                         ),
-                      ),
+                      ],
                     ),
+                    padding: const EdgeInsets.fromLTRB(16, 36, 16, 18),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        Flexible(
+                          child: SingleChildScrollView(
+                            physics: const BouncingScrollPhysics(),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // 1. Sound Effects
+                                _SettingToggleCard(
+                                  label: 'Sound Effects',
+                                  value: progress.soundEnabled,
+                                  onChanged: (val) {
+                                    AudioManager.instance.playClick();
+                                    progress.setSoundEnabled(val);
+                                  },
+                                ),
+                                const SizedBox(height: 10),
 
-                    const SizedBox(height: 14),
+                                // 2. Music
+                                _SettingToggleCard(
+                                  label: 'Music',
+                                  value: progress.musicEnabled,
+                                  onChanged: (val) {
+                                    AudioManager.instance.playClick();
+                                    progress.setMusicEnabled(val);
+                                  },
+                                ),
+                                const SizedBox(height: 10),
 
-                    // Bottom CLOSE Button (Full Width Purple Pill)
-                    GestureDetector(
-                      onTap: () {
-                        AudioManager.instance.playClick();
-                        Navigator.pop(context);
-                      },
-                      child: Container(
-                        height: 52,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF9E54FF), Color(0xFF7020CA)],
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                          ),
-                          borderRadius: BorderRadius.circular(26),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF7020CA).withValues(alpha: 0.45),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
+                                // 3. Haptic Feedback
+                                _SettingToggleCard(
+                                  label: 'Haptic Feedback',
+                                  value: progress.vibrationEnabled,
+                                  onChanged: (val) {
+                                    AudioManager.instance.playClick();
+                                    progress.setVibrationEnabled(val);
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+
+                                // 4. Time Limit
+                                _SettingToggleCard(
+                                  label: 'Time Limit (Later Levels)',
+                                  value: progress.timeLimitEnabled,
+                                  onChanged: (val) {
+                                    AudioManager.instance.playClick();
+                                    progress.setTimeLimitEnabled(val);
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+
+                                // 5. Show Framerate (FPS)
+                                _SettingToggleCard(
+                                  label: 'Show Framerate (FPS)',
+                                  value: progress.showFps,
+                                  onChanged: (val) {
+                                    AudioManager.instance.playClick();
+                                    progress.setShowFps(val);
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+
+                                // 6. Arrow Exit Speed Section
+                                _buildArrowExitSpeedCard(progress),
+                                const SizedBox(height: 10),
+
+                                // 7. How to Play Button
+                                _buildActionCard(
+                                  icon: Icons.help_outline_rounded,
+                                  label: 'How to Play',
+                                  onTap: () {
+                                    AudioManager.instance.playClick();
+                                    showDialog(
+                                      context: context,
+                                      barrierColor: Colors.black87,
+                                      builder: (_) => const HowToPlayDialog(),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+
+                                // 8. Terms & Privacy Policy Button
+                                _buildActionCard(
+                                  icon: Icons.shield_outlined,
+                                  label: 'Terms & Privacy Policy',
+                                  onTap: () {
+                                    AudioManager.instance.playClick();
+                                    _launchUrl(_privacyPolicyUrl);
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+
+                                // 9. Reset Progress Button
+                                _buildResetProgressCard(context, progress),
+                              ],
                             ),
-                          ],
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          'CLOSE',
-                          style: GoogleFonts.nunito(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            letterSpacing: 2,
                           ),
                         ),
-                      ),
+
+                        const SizedBox(height: 14),
+
+                        // Bottom CLOSE Button (Full Width Purple Pill)
+                        GestureDetector(
+                          onTap: () {
+                            AudioManager.instance.playClick();
+                            Navigator.pop(context);
+                          },
+                          child: Container(
+                            height: 52,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF9E54FF), Color(0xFF7020CA)],
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                              ),
+                              borderRadius: BorderRadius.circular(26),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF7020CA)
+                                      .withValues(alpha: 0.45),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              'CLOSE',
+                              style: GoogleFonts.nunito(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
 
-            // ── Top Ribbon Header ───────────────────────────────────────
-            const Positioned(
-              top: 0,
-              child: RibbonHeader(
-                title: 'SETTINGS',
-                bannerWidth: 240,
-                height: 44,
-                fontSize: 18,
+              // ── Top Ribbon Header ───────────────────────────────────────
+              const Positioned(
+                top: 0,
+                child: RibbonHeader(
+                  title: 'SETTINGS',
+                  bannerWidth: 240,
+                  height: 44,
+                  fontSize: 18,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -396,7 +390,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
     );
   }
 
-  Widget _buildResetProgressCard(BuildContext context, ProgressRepository progress) {
+  Widget _buildResetProgressCard(
+      BuildContext context, ProgressRepository progress) {
     return GestureDetector(
       onTap: () {
         AudioManager.instance.playClick();
@@ -539,4 +534,3 @@ class _SettingToggleCard extends StatelessWidget {
     );
   }
 }
-

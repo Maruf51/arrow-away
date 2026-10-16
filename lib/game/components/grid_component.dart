@@ -154,7 +154,10 @@ class GridComponent extends PositionComponent with TapCallbacks {
     _levelType = AppConstants.levelTypeFor(gameState.level.levelNumber);
     _refreshMask();
     _buildArrows();
-    gameState.onCellPopRequested = triggerCellPop;
+    gameState.onCellPopRequested = (row, col) {
+      triggerCellPop(row, col);
+      gameState.handleArrowCellCleared(row, col);
+    };
   }
 
   // ── Tail-cell pop ─────────────────────────────────────────────────────────

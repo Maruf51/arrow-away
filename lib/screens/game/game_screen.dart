@@ -34,7 +34,7 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen>
-  with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   late LevelModel _level;
   late ArrowPuzzleGame _game;
   GameState? _gameState;
@@ -88,7 +88,8 @@ class _GameScreenState extends State<GameScreen>
     _autoZoomController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 850),
-    )..addListener(() {
+    )
+      ..addListener(() {
         final animation = _autoZoomAnimation;
         if (animation == null) return;
         _transformationController.value = animation.value;
@@ -170,7 +171,8 @@ class _GameScreenState extends State<GameScreen>
         if (!mounted) return;
         setState(() => _isLoadingLevel = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not generate today\'s challenge.')),
+          const SnackBar(
+              content: Text('Could not generate today\'s challenge.')),
         );
         Navigator.of(context).pop();
       }
@@ -300,8 +302,7 @@ class _GameScreenState extends State<GameScreen>
       if (now - _lastViewportPushMs < _kViewportPushIntervalMs) return;
       _lastViewportPushMs = now;
     }
-    final sceneTopLeft =
-        _transformationController.toScene(Offset.zero);
+    final sceneTopLeft = _transformationController.toScene(Offset.zero);
     final sceneBottomRight = _transformationController.toScene(
       Offset(viewportSize.width, viewportSize.height),
     );
@@ -320,7 +321,8 @@ class _GameScreenState extends State<GameScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await Future<void>.delayed(const Duration(milliseconds: 500));
-      if (!mounted || !_isLevelReady ||
+      if (!mounted ||
+          !_isLevelReady ||
           _autoZoomScheduledLevel != _level.levelNumber) {
         return;
       }
@@ -421,7 +423,7 @@ class _GameScreenState extends State<GameScreen>
         completed: true,
         completedAt: DateTime.now(),
       ));
-          unawaited(progress.addCoins(reward));
+      unawaited(progress.addCoins(reward));
 
       if (!_isDailyChallenge) {
         final levelType = AppConstants.levelTypeFor(_level.levelNumber);
@@ -548,7 +550,8 @@ class _GameScreenState extends State<GameScreen>
     final action = await ResourceOfferDialog.show(
       context,
       title: 'OUT OF HEARTS',
-      message: 'A heart is needed to play. Hearts regenerate every 10 minutes.\n\nCoins: ${progress.coins}',
+      message:
+          'A heart is needed to play. Hearts regenerate every 10 minutes.\n\nCoins: ${progress.coins}',
       icon: Icons.favorite_rounded,
       iconColor: const Color(0xFFFF4D79),
       actions: [
@@ -558,7 +561,7 @@ class _GameScreenState extends State<GameScreen>
           price: '${AppConstants.heartCostFullRefill} coins',
           icon: Icons.favorite_rounded,
           color: const Color(0xFFE83E69),
-            enabled: progress.coins >= AppConstants.heartCostFullRefill &&
+          enabled: progress.coins >= AppConstants.heartCostFullRefill &&
               !progress.livesAreFull,
         ),
         ResourceOfferAction(
@@ -567,7 +570,7 @@ class _GameScreenState extends State<GameScreen>
           price: '${AppConstants.heartCostSingle} coins',
           icon: Icons.favorite_border_rounded,
           color: const Color(0xFF9A4BE8),
-            enabled: progress.coins >= AppConstants.heartCostSingle &&
+          enabled: progress.coins >= AppConstants.heartCostSingle &&
               !progress.livesAreFull,
         ),
       ],
@@ -594,6 +597,12 @@ class _GameScreenState extends State<GameScreen>
       barrierColor: Colors.black87,
       barrierDismissible: true,
       builder: (_) => _GameSettingsDialog(
+        showTimeLimit: _calculateLevelTimerDuration(
+              _level.levelNumber,
+              _level.arrows.length,
+            ) >
+            0,
+        onTimeLimitChanged: _handleTimeLimitChanged,
         onResume: () {
           Navigator.pop(context);
         },
@@ -635,7 +644,8 @@ class _GameScreenState extends State<GameScreen>
     final choice = await ResourceOfferDialog.show(
       context,
       title: 'NO HINTS LEFT',
-      message: 'Get a hint to reveal an arrow with a clear escape path.\n\nCoins: ${progress.coins}',
+      message:
+          'Get a hint to reveal an arrow with a clear escape path.\n\nCoins: ${progress.coins}',
       icon: Icons.lightbulb_rounded,
       iconColor: const Color(0xFF9A4BE8),
       actions: [
@@ -696,11 +706,14 @@ class _GameScreenState extends State<GameScreen>
     final viewport = _gameViewportSize;
     final grid = _game.gridComponent;
     final path = _gameState?.arrowPathFor(arrowId);
-    if (viewport == null || grid == null || path == null || path.isEmpty) return;
+    if (viewport == null || grid == null || path == null || path.isEmpty)
+      return;
 
     _cancelAutoZoomForUserGesture();
-    final averageRow = path.fold<int>(0, (sum, cell) => sum + cell[0]) / path.length;
-    final averageCol = path.fold<int>(0, (sum, cell) => sum + cell[1]) / path.length;
+    final averageRow =
+        path.fold<int>(0, (sum, cell) => sum + cell[0]) / path.length;
+    final averageCol =
+        path.fold<int>(0, (sum, cell) => sum + cell[1]) / path.length;
     final focus = Offset(
       grid.position.x + (averageCol + 0.5) * grid.cellSize,
       grid.position.y + (averageRow + 0.5) * grid.cellSize,
@@ -763,7 +776,8 @@ class _GameScreenState extends State<GameScreen>
                         decoration: BoxDecoration(
                           color: const Color(0xFFFFF2DC),
                           shape: BoxShape.circle,
-                          border: Border.all(color: const Color(0xFFFFDF9E), width: 1.5),
+                          border: Border.all(
+                              color: const Color(0xFFFFDF9E), width: 1.5),
                         ),
                         child: const Icon(
                           Icons.refresh_rounded,
@@ -805,7 +819,10 @@ class _GameScreenState extends State<GameScreen>
                                 height: 48,
                                 decoration: BoxDecoration(
                                   gradient: const LinearGradient(
-                                    colors: [Color(0xFF9E54FF), Color(0xFF7020CA)],
+                                    colors: [
+                                      Color(0xFF9E54FF),
+                                      Color(0xFF7020CA)
+                                    ],
                                     begin: Alignment.topCenter,
                                     end: Alignment.bottomCenter,
                                   ),
@@ -836,7 +853,10 @@ class _GameScreenState extends State<GameScreen>
                                 height: 48,
                                 decoration: BoxDecoration(
                                   gradient: const LinearGradient(
-                                    colors: [Color(0xFFFF4D79), Color(0xFFE0245E)],
+                                    colors: [
+                                      Color(0xFFFF4D79),
+                                      Color(0xFFE0245E)
+                                    ],
                                     begin: Alignment.topCenter,
                                     end: Alignment.bottomCenter,
                                   ),
@@ -921,7 +941,8 @@ class _GameScreenState extends State<GameScreen>
                         decoration: BoxDecoration(
                           color: const Color(0xFFFFECEF),
                           shape: BoxShape.circle,
-                          border: Border.all(color: const Color(0xFFFFC5D0), width: 1.5),
+                          border: Border.all(
+                              color: const Color(0xFFFFC5D0), width: 1.5),
                         ),
                         child: const Icon(
                           Icons.exit_to_app_rounded,
@@ -963,7 +984,10 @@ class _GameScreenState extends State<GameScreen>
                                 height: 48,
                                 decoration: BoxDecoration(
                                   gradient: const LinearGradient(
-                                    colors: [Color(0xFF9E54FF), Color(0xFF7020CA)],
+                                    colors: [
+                                      Color(0xFF9E54FF),
+                                      Color(0xFF7020CA)
+                                    ],
                                     begin: Alignment.topCenter,
                                     end: Alignment.bottomCenter,
                                   ),
@@ -973,7 +997,8 @@ class _GameScreenState extends State<GameScreen>
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
+                                    const Icon(Icons.play_arrow_rounded,
+                                        color: Colors.white, size: 20),
                                     const SizedBox(width: 4),
                                     Text(
                                       'STAY',
@@ -1001,7 +1026,10 @@ class _GameScreenState extends State<GameScreen>
                                 height: 48,
                                 decoration: BoxDecoration(
                                   gradient: const LinearGradient(
-                                    colors: [Color(0xFFFF3366), Color(0xFFD61848)],
+                                    colors: [
+                                      Color(0xFFFF3366),
+                                      Color(0xFFD61848)
+                                    ],
                                     begin: Alignment.topCenter,
                                     end: Alignment.bottomCenter,
                                   ),
@@ -1011,7 +1039,8 @@ class _GameScreenState extends State<GameScreen>
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    const Icon(Icons.home_rounded, color: Colors.white, size: 18),
+                                    const Icon(Icons.home_rounded,
+                                        color: Colors.white, size: 18),
                                     const SizedBox(width: 4),
                                     Text(
                                       'EXIT',
@@ -1308,6 +1337,7 @@ class _GameScreenState extends State<GameScreen>
           (levelType == LevelType.god && _level.levelNumber > 100) ||
               (levelType == LevelType.boss && _level.levelNumber > 200);
       if (hasTimer &&
+          context.read<ProgressRepository>().timeLimitEnabled &&
           !_showingComplete &&
           !_showingGameOver &&
           !_isLoadingLevel &&
@@ -1355,7 +1385,7 @@ class _GameScreenState extends State<GameScreen>
     _isTimeoutState = false;
 
     final progress = context.read<ProgressRepository>();
-    if (progress.isDemoMode) {
+    if (progress.isDemoMode || !progress.timeLimitEnabled) {
       _totalTime = 0;
       _timeRemaining = 0;
       return;
@@ -1374,6 +1404,20 @@ class _GameScreenState extends State<GameScreen>
       _totalTime = 0;
       _timeRemaining = 0;
     }
+  }
+
+  void _handleTimeLimitChanged(bool enabled) {
+    if (!mounted) return;
+    setState(() {
+      if (enabled) {
+        _resetTimerForLevel();
+      } else {
+        _levelTimer?.cancel();
+        _isTimeoutState = false;
+        _totalTime = 0;
+        _timeRemaining = 0;
+      }
+    });
   }
 
   void _startLevelTimer() {
@@ -1414,6 +1458,84 @@ class _GameScreenState extends State<GameScreen>
     _gameState?.forceGameOver();
   }
 
+  Widget _buildArrowClearProgress() {
+    final totalArrows = _level.totalArrows;
+    final remainingArrows = _gameState!.arrowsRemaining;
+    final progress =
+        totalArrows == 0 ? 0.0 : (totalArrows - remainingArrows) / totalArrows;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 2, 18, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text(
+                'LEVEL PROGRESS',
+                style: GoogleFonts.nunito(
+                  color: AppColors.textMuted,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '$remainingArrows ${remainingArrows == 1 ? 'arrow' : 'arrows'} left',
+                style: GoogleFonts.nunito(
+                  color: AppColors.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Container(
+            height: 10,
+            decoration: BoxDecoration(
+              color: AppColors.surface.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: AppColors.purpleLight.withValues(alpha: 0.55),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.purple.withValues(alpha: 0.28),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: TweenAnimationBuilder<double>(
+                tween: Tween<double>(begin: 0, end: progress),
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+                builder: (context, value, _) => Align(
+                  alignment: Alignment.centerLeft,
+                  child: FractionallySizedBox(
+                    widthFactor: value.clamp(0.0, 1.0),
+                    heightFactor: 1,
+                    child: const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [AppColors.purpleLight, AppColors.gold],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Show a premium loading screen while the level is being generated
@@ -1429,7 +1551,6 @@ class _GameScreenState extends State<GameScreen>
     }
 
     final levelType = AppConstants.levelTypeFor(_level.levelNumber);
-
 
     final Widget screen = Scaffold(
       body: Container(
@@ -1460,6 +1581,8 @@ class _GameScreenState extends State<GameScreen>
                   ),
                 ),
 
+              _buildArrowClearProgress(),
+
               // ── Game Canvas ──────────────────────────────────────────────
               Expanded(
                 child: LayoutBuilder(
@@ -1487,21 +1610,21 @@ class _GameScreenState extends State<GameScreen>
                               maxScale: 4.0,
                               boundaryMargin: const EdgeInsets.all(180),
                               clipBehavior: Clip.none,
-                                onInteractionStart: (_) {
-                                  _cancelAutoZoomForUserGesture();
-                                  if (_isLevelReady) {
-                                    _game.setGestureFrozen(true);
-                                  }
-                                },
-                                onInteractionUpdate: (_) =>
+                              onInteractionStart: (_) {
+                                _cancelAutoZoomForUserGesture();
+                                if (_isLevelReady) {
+                                  _game.setGestureFrozen(true);
+                                }
+                              },
+                              onInteractionUpdate: (_) =>
                                   _updateExitViewportSceneRect(viewportSize,
                                       throttle: true),
-                                onInteractionEnd: (_) {
-                                  _updateExitViewportSceneRect(viewportSize);
-                                  if (_isLevelReady) {
-                                    _game.setGestureFrozen(false);
-                                  }
-                                },
+                              onInteractionEnd: (_) {
+                                _updateExitViewportSceneRect(viewportSize);
+                                if (_isLevelReady) {
+                                  _game.setGestureFrozen(false);
+                                }
+                              },
                               child: Center(
                                 child: SizedBox(
                                   width: boardW,
@@ -2393,7 +2516,9 @@ class _TopBar extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                isDailyChallenge ? 'DAILY CHALLENGE' : 'LEVEL ${level.levelNumber}',
+                isDailyChallenge
+                    ? 'DAILY CHALLENGE'
+                    : 'LEVEL ${level.levelNumber}',
                 style: GoogleFonts.nunito(
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
@@ -2409,8 +2534,12 @@ class _TopBar extends StatelessWidget {
                   (i) => Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 3),
                     child: Icon(
-                      i < lives ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                      color: i < lives ? const Color(0xFFFF3366) : const Color(0xFF5A457D),
+                      i < lives
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      color: i < lives
+                          ? const Color(0xFFFF3366)
+                          : const Color(0xFF5A457D),
                       size: 19,
                     ),
                   ),
@@ -2441,7 +2570,8 @@ class _TopBar extends StatelessWidget {
                   onHint();
                 },
                 badge: Container(
-                  constraints: const BoxConstraints(minWidth: 19, minHeight: 19),
+                  constraints:
+                      const BoxConstraints(minWidth: 19, minHeight: 19),
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   decoration: const BoxDecoration(
                     color: Color(0xFFFF3366),
@@ -2981,12 +3111,16 @@ class _DialogButton extends StatelessWidget {
 }
 
 class _GameSettingsDialog extends StatelessWidget {
+  final bool showTimeLimit;
+  final ValueChanged<bool> onTimeLimitChanged;
   final VoidCallback onResume;
   final VoidCallback onRestart;
   final VoidCallback onHelp;
   final VoidCallback onQuit;
 
   const _GameSettingsDialog({
+    required this.showTimeLimit,
+    required this.onTimeLimitChanged,
     required this.onResume,
     required this.onRestart,
     required this.onHelp,
@@ -3032,8 +3166,22 @@ class _GameSettingsDialog extends StatelessWidget {
                     }),
                     const SizedBox(height: 10),
 
+                    if (showTimeLimit) ...[
+                      _buildSwitchCard(
+                        'Time Limit',
+                        progress.timeLimitEnabled,
+                        (val) {
+                          AudioManager.instance.playClick();
+                          progress.setTimeLimitEnabled(val);
+                          onTimeLimitChanged(val);
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
                     // 2. Vibrate Switch
-                    _buildSwitchCard('Vibrate', progress.vibrationEnabled, (val) {
+                    _buildSwitchCard('Vibrate', progress.vibrationEnabled,
+                        (val) {
                       AudioManager.instance.playClick();
                       progress.setVibrationEnabled(val);
                     }),
@@ -3061,7 +3209,8 @@ class _GameSettingsDialog extends StatelessWidget {
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF15733C).withValues(alpha: 0.5),
+                              color: const Color(0xFF15733C)
+                                  .withValues(alpha: 0.5),
                               blurRadius: 8,
                               offset: const Offset(0, 3),
                             ),
@@ -3071,7 +3220,8 @@ class _GameSettingsDialog extends StatelessWidget {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24),
+                            const Icon(Icons.play_arrow_rounded,
+                                color: Colors.white, size: 24),
                             const SizedBox(width: 6),
                             Text(
                               'RESUME',
@@ -3102,14 +3252,18 @@ class _GameSettingsDialog extends StatelessWidget {
                               height: 48,
                               decoration: BoxDecoration(
                                 gradient: const LinearGradient(
-                                  colors: [Color(0xFFFF7A45), Color(0xFFE65100)],
+                                  colors: [
+                                    Color(0xFFFF7A45),
+                                    Color(0xFFE65100)
+                                  ],
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
                                 ),
                                 borderRadius: BorderRadius.circular(16),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: const Color(0xFF9E3800).withValues(alpha: 0.4),
+                                    color: const Color(0xFF9E3800)
+                                        .withValues(alpha: 0.4),
                                     blurRadius: 6,
                                     offset: const Offset(0, 3),
                                   ),
@@ -3119,7 +3273,8 @@ class _GameSettingsDialog extends StatelessWidget {
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+                                  const Icon(Icons.refresh_rounded,
+                                      color: Colors.white, size: 18),
                                   const SizedBox(width: 6),
                                   Text(
                                     'RESTART',
@@ -3148,14 +3303,18 @@ class _GameSettingsDialog extends StatelessWidget {
                               height: 48,
                               decoration: BoxDecoration(
                                 gradient: const LinearGradient(
-                                  colors: [Color(0xFFFFC738), Color(0xFFF09B16)],
+                                  colors: [
+                                    Color(0xFFFFC738),
+                                    Color(0xFFF09B16)
+                                  ],
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
                                 ),
                                 borderRadius: BorderRadius.circular(16),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: const Color(0xFFB56A00).withValues(alpha: 0.4),
+                                    color: const Color(0xFFB56A00)
+                                        .withValues(alpha: 0.4),
                                     blurRadius: 6,
                                     offset: const Offset(0, 3),
                                   ),
@@ -3165,7 +3324,8 @@ class _GameSettingsDialog extends StatelessWidget {
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.help_outline_rounded, color: Color(0xFF382006), size: 18),
+                                  const Icon(Icons.help_outline_rounded,
+                                      color: Color(0xFF382006), size: 18),
                                   const SizedBox(width: 6),
                                   Text(
                                     'HELP',
@@ -3203,7 +3363,8 @@ class _GameSettingsDialog extends StatelessWidget {
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF7020CA).withValues(alpha: 0.4),
+                              color: const Color(0xFF7020CA)
+                                  .withValues(alpha: 0.4),
                               blurRadius: 6,
                               offset: const Offset(0, 3),
                             ),
@@ -3213,7 +3374,8 @@ class _GameSettingsDialog extends StatelessWidget {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.home_rounded, color: Colors.white, size: 20),
+                            const Icon(Icons.home_rounded,
+                                color: Colors.white, size: 20),
                             const SizedBox(width: 6),
                             Text(
                               'QUIT',
@@ -3249,7 +3411,8 @@ class _GameSettingsDialog extends StatelessWidget {
     );
   }
 
-  Widget _buildSwitchCard(String label, bool value, ValueChanged<bool> onChanged) {
+  Widget _buildSwitchCard(
+      String label, bool value, ValueChanged<bool> onChanged) {
     return Container(
       height: 46,
       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -3521,7 +3684,8 @@ class _BouncingDotsState extends State<_BouncingDots>
 class _LevelLoadingScreen extends StatefulWidget {
   final int levelNumber;
   final bool isDailyChallenge;
-  const _LevelLoadingScreen({required this.levelNumber, this.isDailyChallenge = false});
+  const _LevelLoadingScreen(
+      {required this.levelNumber, this.isDailyChallenge = false});
 
   @override
   State<_LevelLoadingScreen> createState() => _LevelLoadingScreenState();
@@ -3599,7 +3763,9 @@ class _LevelLoadingScreenState extends State<_LevelLoadingScreen>
               ),
               const SizedBox(height: 28),
               Text(
-                widget.isDailyChallenge ? 'Daily Challenge' : 'Level ${widget.levelNumber}',
+                widget.isDailyChallenge
+                    ? 'Daily Challenge'
+                    : 'Level ${widget.levelNumber}',
                 style: GoogleFonts.nunito(
                   fontSize: 28,
                   fontWeight: FontWeight.w900,

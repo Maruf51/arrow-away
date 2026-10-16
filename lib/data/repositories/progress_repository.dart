@@ -33,6 +33,7 @@ class ProgressRepository extends ChangeNotifier {
   bool _soundEnabled = true;
   bool _musicEnabled = true;
   bool _vibrationEnabled = true;
+  bool _timeLimitEnabled = true;
   ThemeMode _themeMode = ThemeMode.system;
   bool _showFps = false;
 
@@ -68,10 +69,11 @@ class ProgressRepository extends ChangeNotifier {
   int get totalScore => _totalScore;
   int get coins => _coins;
   bool get hasUnclaimedDailyCoin {
-    final stored = _prefs?.getString('lastDailyCoinClaimDate') ??
-        _lastDailyCoinClaimDate;
+    final stored =
+        _prefs?.getString('lastDailyCoinClaimDate') ?? _lastDailyCoinClaimDate;
     return stored == null || stored != _todayKey();
   }
+
   bool get hasUnclaimedStreakReward {
     final stored = _prefs?.getString('dailyStreakRewardClaimedDate') ??
         _dailyStreakRewardClaimedDate;
@@ -96,30 +98,37 @@ class ProgressRepository extends ChangeNotifier {
   bool get hasLives => _isDemoMode || lives > 0;
   bool get livesAreFull => _isDemoMode || lives >= AppConstants.maxLives;
   int get _effectiveHeartCount {
-    if (_isDemoMode || _nextHeartAt == null || DateTime.now().isBefore(_nextHeartAt!)) {
+    if (_isDemoMode ||
+        _nextHeartAt == null ||
+        DateTime.now().isBefore(_nextHeartAt!)) {
       return _lives;
     }
     final elapsed = DateTime.now().difference(_nextHeartAt!);
-    final restored = 1 + elapsed.inSeconds ~/ AppConstants.heartRegenerationInterval.inSeconds;
+    final restored = 1 +
+        elapsed.inSeconds ~/ AppConstants.heartRegenerationInterval.inSeconds;
     return (_lives + restored).clamp(0, AppConstants.maxLives);
   }
 
   Duration? get timeUntilNextHeart {
     if (_isDemoMode || livesAreFull || _nextHeartAt == null) return null;
     final restored = _effectiveHeartCount - _lives;
-    final next = _nextHeartAt!.add(AppConstants.heartRegenerationInterval * restored);
+    final next =
+        _nextHeartAt!.add(AppConstants.heartRegenerationInterval * restored);
     final remaining = next.difference(DateTime.now());
     return remaining.isNegative ? Duration.zero : remaining;
   }
+
   bool get dailyChallengeCompletedToday =>
       _dailyChallengeResults.containsKey(dailyChallengeDateKey(DateTime.now()));
-  int get dailyChallengeStreak => _calculateDailyChallengeStreak(DateTime.now());
+  int get dailyChallengeStreak =>
+      _calculateDailyChallengeStreak(DateTime.now());
   int dailyChallengeStreakFor(DateTime date) =>
       _calculateDailyChallengeStreak(date);
 
   bool get soundEnabled => _soundEnabled;
   bool get musicEnabled => _musicEnabled;
   bool get vibrationEnabled => _vibrationEnabled;
+  bool get timeLimitEnabled => _timeLimitEnabled;
   ThemeMode get themeMode => _themeMode;
   bool get showFps => _showFps;
   bool get hasSeen40x40Warning => _hasSeen40x40Warning;
@@ -148,15 +157,17 @@ class ProgressRepository extends ChangeNotifier {
   void _load() {
     if (_prefs == null) return;
     try {
-        _lives = (_prefs!.getInt('lives') ?? AppConstants.maxLives)
+      _lives = (_prefs!.getInt('lives') ?? AppConstants.maxLives)
           .clamp(0, AppConstants.maxLives);
       final nextHeartAt = _prefs!.getString('nextHeartAt');
-      _nextHeartAt = nextHeartAt == null ? null : DateTime.tryParse(nextHeartAt);
-        if (nextHeartAt == null && _prefs!.getInt('lives') == 3) {
-          _lives = AppConstants.maxLives;
-        } else if (_lives < AppConstants.maxLives && _nextHeartAt == null) {
-          _nextHeartAt = DateTime.now().add(AppConstants.heartRegenerationInterval);
-        }
+      _nextHeartAt =
+          nextHeartAt == null ? null : DateTime.tryParse(nextHeartAt);
+      if (nextHeartAt == null && _prefs!.getInt('lives') == 3) {
+        _lives = AppConstants.maxLives;
+      } else if (_lives < AppConstants.maxLives && _nextHeartAt == null) {
+        _nextHeartAt =
+            DateTime.now().add(AppConstants.heartRegenerationInterval);
+      }
       _currentLevel = _prefs!.getInt('currentLevel') ?? 1;
       _highestUnlockedLevel = _prefs!.getInt('highestUnlockedLevel') ?? 1;
       _totalScore = _prefs!.getInt('totalScore') ?? 0;
@@ -166,6 +177,7 @@ class ProgressRepository extends ChangeNotifier {
       _soundEnabled = _prefs!.getBool('soundEnabled') ?? true;
       _musicEnabled = _prefs!.getBool('musicEnabled') ?? true;
       _vibrationEnabled = _prefs!.getBool('vibrationEnabled') ?? true;
+      _timeLimitEnabled = _prefs!.getBool('timeLimitEnabled') ?? true;
       _hasSeen40x40Warning = _prefs!.getBool('hasSeen40x40Warning') ?? false;
       _hasSeenZoomHint = _prefs!.getBool('hasSeenZoomHint') ?? false;
       _showFps = _prefs!.getBool('showFps') ?? false;
@@ -259,14 +271,17 @@ class ProgressRepository extends ChangeNotifier {
   // ── Universal hearts ───────────────────────────────────────────────────────
 
   Future<void> refreshHearts() async {
-    if (_isDemoMode || _lives >= AppConstants.maxLives || _nextHeartAt == null) {
+    if (_isDemoMode ||
+        _lives >= AppConstants.maxLives ||
+        _nextHeartAt == null) {
       return;
     }
     final now = DateTime.now();
     if (now.isBefore(_nextHeartAt!)) return;
 
     final elapsed = now.difference(_nextHeartAt!);
-    final restored = 1 + elapsed.inSeconds ~/ AppConstants.heartRegenerationInterval.inSeconds;
+    final restored = 1 +
+        elapsed.inSeconds ~/ AppConstants.heartRegenerationInterval.inSeconds;
     _lives = (_lives + restored).clamp(0, AppConstants.maxLives);
     _nextHeartAt = _lives >= AppConstants.maxLives
         ? null
@@ -333,8 +348,8 @@ class ProgressRepository extends ChangeNotifier {
     final now = date ?? DateTime.now();
     final monthKey = '${now.year}-${now.month.toString().padLeft(2, '0')}';
     if (_dailyChallengeMonth != monthKey ||
-      _dailyChallengeVersion != 2 ||
-      _dailyChallengeSeeds.isEmpty) {
+        _dailyChallengeVersion != 2 ||
+        _dailyChallengeSeeds.isEmpty) {
       final dayCount = DateTime(now.year, now.month + 1, 0).day;
       final random = Random(now.year * 100 + now.month);
       final usedSeeds = <int>{};
@@ -352,7 +367,8 @@ class ProgressRepository extends ChangeNotifier {
       await _prefs?.setInt('dailyChallengeVersion', 2);
       await _prefs?.setString(
         'dailyChallengeLevels',
-        jsonEncode(_dailyChallengeSeeds.map((key, value) => MapEntry('$key', value))),
+        jsonEncode(
+            _dailyChallengeSeeds.map((key, value) => MapEntry('$key', value))),
       );
       notifyListeners();
     }
@@ -368,7 +384,8 @@ class ProgressRepository extends ChangeNotifier {
     final isFirstCompletion = !_dailyChallengeResults.containsKey(dateKey);
     final previous = _dailyChallengeResults[dateKey] ?? 0;
     if (stars > previous) _dailyChallengeResults[dateKey] = stars;
-    await _prefs?.setString('dailyChallengeResults', jsonEncode(_dailyChallengeResults));
+    await _prefs?.setString(
+        'dailyChallengeResults', jsonEncode(_dailyChallengeResults));
     notifyListeners();
     return isFirstCompletion;
   }
@@ -453,7 +470,7 @@ class ProgressRepository extends ChangeNotifier {
       _levelResults[result.levelNumber] = result;
     }
     _totalScore += result.score;
-    _currentLevel = result.levelNumber + 1;
+    _currentLevel = max(_currentLevel, result.levelNumber + 1);
     if (_currentLevel > _highestUnlockedLevel) {
       _highestUnlockedLevel = _currentLevel;
     }
@@ -524,7 +541,8 @@ class ProgressRepository extends ChangeNotifier {
       if (_lives >= AppConstants.maxLives) {
         _nextHeartAt = null;
       } else if (_nextHeartAt == null) {
-        _nextHeartAt = DateTime.now().add(AppConstants.heartRegenerationInterval);
+        _nextHeartAt =
+            DateTime.now().add(AppConstants.heartRegenerationInterval);
       }
       unawaited(_save());
     }
@@ -592,6 +610,12 @@ class ProgressRepository extends ChangeNotifier {
   Future<void> setVibrationEnabled(bool value) async {
     _vibrationEnabled = value;
     await _prefs?.setBool('vibrationEnabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setTimeLimitEnabled(bool value) async {
+    _timeLimitEnabled = value;
+    await _prefs?.setBool('timeLimitEnabled', value);
     notifyListeners();
   }
 

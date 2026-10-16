@@ -31,11 +31,41 @@ void main() {
     );
     await tester.pump();
 
+    final settingsCard = find.byWidgetPredicate((widget) {
+      if (widget is! Container || widget.decoration is! BoxDecoration) {
+        return false;
+      }
+      return (widget.decoration! as BoxDecoration).color ==
+          const Color(0xFFFFF9EE);
+    });
+    final cardHeight = tester.getSize(settingsCard.first).height;
+    final viewHeight =
+        MediaQuery.sizeOf(tester.element(find.byType(SettingsDialog))).height;
+    expect(cardHeight, greaterThan(viewHeight * 0.6));
+    expect(cardHeight, lessThan(viewHeight * 0.8));
+    expect(find.byType(SingleChildScrollView), findsWidgets);
+
     // Tile is visible in the settings menu.
     expect(find.text('Show Framerate (FPS)'), findsOneWidget);
+    expect(find.text('Grid Background Dots'), findsNothing);
+    expect(find.text('Start Arrow Animation'), findsNothing);
 
     // Defaults to off.
     expect(progress.showFps, isFalse);
+    expect(progress.timeLimitEnabled, isTrue);
+
+    final timeLimitCard = find.ancestor(
+      of: find.text('Time Limit (Later Levels)'),
+      matching: find.byType(Row),
+    );
+    final timeLimitSwitch = find.descendant(
+      of: timeLimitCard.first,
+      matching: find.byType(Switch),
+    );
+    await tester.tap(timeLimitSwitch);
+    await tester.pump();
+    expect(progress.timeLimitEnabled, isFalse);
+    expect(prefs.getBool('timeLimitEnabled'), isFalse);
 
     // The FPS switch: the Switch inside the 'Show Framerate (FPS)' card.
     // (Resolved by card instead of index so neighbouring toggles — e.g. the

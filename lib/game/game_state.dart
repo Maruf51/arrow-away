@@ -9,6 +9,8 @@ class GameState extends ChangeNotifier {
   // ── Level ─────────────────────────────────────────────────────────────────────
   late LevelModel _currentLevel;
   late List<ArrowModel> _arrows;
+  late final Set<String> _arrowDotKeys;
+  final Set<String> _clearedArrowDots = {};
   int _lives = AppConstants.maxGameplayLives;
   int _movesUsed = 0;
   int _livesLost = 0;
@@ -54,6 +56,10 @@ class GameState extends ChangeNotifier {
   }) {
     _currentLevel = level;
     _arrows = level.arrows.map((a) => a.copyWith()).toList();
+    _arrowDotKeys = {
+      for (final arrow in level.arrows)
+        for (final cell in arrow.path) '${cell[0]},${cell[1]}',
+    };
     _orphanDots = {for (final od in level.orphanDots) od.key: od.type};
   }
 
@@ -72,9 +78,17 @@ class GameState extends ChangeNotifier {
   bool get isGameOver => _isGameOver;
   bool get isDeadlocked => _isDeadlocked;
   int get arrowsRemaining => _arrows.length;
+  int get totalArrowDots => _arrowDotKeys.length;
+  int get arrowDotsRemaining => totalArrowDots - _clearedArrowDots.length;
   LevelModel get level => _currentLevel;
   /// Live orphan dots remaining (consumed dots are absent from this map).
   Map<String, OrphanDotType> get orphanDots => _orphanDots;
+
+  void handleArrowCellCleared(int row, int col) {
+    final key = '$row,$col';
+    if (!_arrowDotKeys.contains(key) || !_clearedArrowDots.add(key)) return;
+    notifyListeners();
+  }
 
   /// Called by the ArrowComponent when its exit animation completes.
   void handleArrowExitCompleted(String arrowId) {
@@ -426,6 +440,7 @@ class GameState extends ChangeNotifier {
     _tapStreak = 0;
     _maxTapStreak = 0;
     _clearedColorGroups.clear();
+    _clearedArrowDots.clear();
     notifyListeners();
   }
 
